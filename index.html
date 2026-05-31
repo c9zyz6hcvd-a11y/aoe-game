@@ -23,10 +23,12 @@
   #bmenu{position:fixed;bottom:0;left:0;right:0;height:68px;
     background:rgba(12,12,12,.85);backdrop-filter:blur(4px);
     display:none;align-items:center;justify-content:center;gap:6px;
-    border-top:2px solid #555;z-index:10;padding:0 10px;}
+    border-top:2px solid #555;z-index:10;padding:0 10px;
+    user-select:none;}
   #bmenu button{background:rgba(55,55,55,.9);border:2px solid #666;color:#eee;
     font-size:12px;padding:5px 10px;border-radius:8px;cursor:pointer;
-    font-weight:bold;font-family:sans-serif;transition:all .12s;white-space:nowrap;}
+    font-weight:bold;font-family:sans-serif;transition:all .12s;white-space:nowrap;
+    pointer-events:auto;}
   #bmenu button:hover:not(:disabled){border-color:#ffd250;background:rgba(75,75,75,.9);transform:scale(1.04);}
   #bmenu button:disabled{opacity:.3;cursor:not-allowed;border-color:#444;transform:none;}
   #bmenu .label{color:#aaa;font-size:13px;padding:0 8px;font-weight:bold;}
@@ -71,12 +73,14 @@ const cam={x:WORLD.w/2-640,y:WORLD.h/2-400,zoom:1};
 function sw(sx,sy){return{x:cam.x+sx/cam.zoom,y:cam.y+sy/cam.zoom};}
 let wood=100,food=80,stone=0;
 const woodEl=document.getElementById('wood'),foodEl=document.getElementById('food'),stoneEl=document.getElementById('stone'),
-  popEl=document.getElementById('pop'),popCapEl=document.getElementById('popCap'),statusEl=document.getElementById('status'),timerEl=document.getElementById('timer'),
-  grpLabelsEl=document.getElementById('grpLabels');
+  popEl=document.getElementById('pop'),popCapEl=document.getElementById('popCap'),statusEl=document.getElementById('status'),
+  timerEl=document.getElementById('timer'),grpLabelsEl=document.getElementById('grpLabels');
 let statusTimer=0;
 function showStatus(m){statusEl.textContent=m;statusEl.style.opacity=1;statusTimer=3;}
 let popCap=5;
 function upPop(){popEl.textContent=units.length;popCapEl.textContent=popCap;}
+const ENEMY_ATTACK_DELAY=180;
+let gameTime=0;
 // ---- 建築定義 ----
 const BUILD_DEFS={
   house:{name:'房屋',w:76,h:66,hp:200,cost:{wood:30},bt:5,pb:5},
@@ -108,7 +112,7 @@ function canAfford(c){return(!c.wood||wood>=c.wood)&&(!c.food||food>=c.food)&&(!
 function spend(c){if(c.wood){wood-=c.wood;woodEl.textContent=wood;}if(c.food){food-=c.food;foodEl.textContent=food;}if(c.stone){stone-=c.stone;stoneEl.textContent=stone;}}
 function startBuild(type){
   const def=BUILD_DEFS[type];if(!def)return;
-  const vls=selected().filter(u=>u.type==='villager'&&u.team==='player');
+  const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
   if(!vls.length){showStatus('選取村民');return;}
   if(!canAfford(def.cost)){showStatus('資源不足');return;}
   const ax=vls.reduce((s,v)=>s+v.x,0)/vls.length,ay=vls.reduce((s,v)=>s+v.y,0)/vls.length;
@@ -129,8 +133,7 @@ function trainVillager(){
   spend({food:50});const c=tcCenter();
   const v=makeUnit(c.x-12+Math.random()*24,c.y+tc.h/2+5,'villager');
   v.tx=c.x;v.ty=c.y+tc.h+60;v.state='moving';units.push(v);upPop();
-  playDrop();spawnFx(c.x,c.y+tc.h,'#80ff80',10);showStatus('👤 新村民');
-}
+  playDrop();spawnFx(c.x,c.y+tc.h,'#80ff80',10);showStatus('👤 新村民');}
 function trainUnit(type){
   const def=UNIT_DEFS[type];if(!def)return;
   if(!selectedBldg||selectedBldg.type!=='barracks'||!selectedBldg.complete){showStatus('選取兵營');return;}
@@ -140,8 +143,7 @@ function trainUnit(type){
   const u=makeUnit(b.x+b.w/2-10+Math.random()*20,b.y+b.h+16,type);
   u.tx=b.x+b.w/2+(Math.random()-.5)*40;u.ty=b.y+b.h+40+Math.random()*20;
   u.state='moving';units.push(u);upPop();
-  playClick();spawnFx(u.x,u.y,'#80c0ff',10);showStatus('⚔️ '+def.name);
-}
+  playClick();spawnFx(u.x,u.y,'#80c0ff',10);showStatus('⚔️ '+def.name);}
 // ---- TC ----
 const tc={x:WORLD.w/2-280,y:WORLD.h/2-40,w:100,h:100};
 const etc={x:WORLD.w-250,y:WORLD.h/2-40,w:100,h:100,team:'enemy'};
@@ -185,14 +187,13 @@ function makeUnit(x,y,type,team='player'){
       path:null,pi:0,patrolX:x,patrolY:y};}
   return o;
 }
-// 初始敵軍
 const eSpawns=[{type:'swordsman',dx:-200,dy:-60},{type:'swordsman',dx:-160,dy:10},{type:'swordsman',dx:-240,dy:40},{type:'archer',dx:-120,dy:-30},{type:'horseman',dx:-280,dy:-10}];
 const units=[];
 (function(){units.push(makeUnit(tc.x+tc.w/2-30,tc.y+tc.h+30,'villager'));
   units.push(makeUnit(tc.x+tc.w/2,tc.y+tc.h+30,'villager'));
   units.push(makeUnit(tc.x+tc.w/2+30,tc.y+tc.h+30,'villager'));
   for(const e of eSpawns){const u=makeUnit(etc.x+50+e.dx,etc.y+50+e.dy,e.type,'enemy');units.push(u);}}());
-function selected(t){return units.filter(u=>u.sel&&(!t||u.team===t));}
+function selected(){return units.filter(u=>u.sel);}
 // ---- 音效 ----
 const AC=new(window.AudioContext||window.webkitAudioContext)();
 addEventListener('mousedown',()=>{if(AC.state==='suspended')AC.resume();},{once:0});
@@ -254,19 +255,15 @@ function aStar(sx,sy,ex,ey){
       const path=[];let cx=egx,cy=egy;
       while(!(cx===sgx&&cy===sgy)){path.unshift({x:cx*WORLD.T+WORLD.T/2,y:cy*WORLD.T+WORLD.T/2});
         const pk=key(cx,cy),p=par.get(pk);if(!p)break;cx=p.x;cy=p.y;}
-      return path.length>1?path:null;
-    }
+      return path.length>1?path:null;}
     for(const[dx,dy]of[[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,1],[1,-1],[-1,-1]]){
       const nx=cur.x+dx,ny=cur.y+dy;
       if(nx<0||ny<0||nx>=G||ny>=R||bs.has(key(nx,ny)))continue;
       if(closed.has(key(nx,ny)))continue;
       const ng=cur.g+(dx&&dy?1.414:1),nf=ng+h(nx,ny),ei=open.findIndex(o=>o.x===nx&&o.y===ny);
       if(ei>=0){if(ng<open[ei].g){open[ei].g=ng;open[ei].f=nf;open[ei].px=cur.x;open[ei].py=cur.y;}}
-      else open.push({f:nf,g:ng,x:nx,y:ny,px:cur.x,py:cur.y});
-    }
-  }
-  return null;
-}
+      else open.push({f:nf,g:ng,x:nx,y:ny,px:cur.x,py:cur.y});}}
+  return null;}
 // ---- 輸入 ----
 let mouseDown=null,bxSel=0,bxR=null,dragM=0;
 const grps={};for(let i=1;i<=9;i++)grps[i]=[];
@@ -289,29 +286,26 @@ function issueCmd(wx,wy){
     vils.forEach((v,i)=>{const t=pool[i%pool.length];
       v.tRes=t;v.gType=t.type;v.state='moving';v.tBldg=null;v.tEn=null;v.path=null;
       const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;});showStatus(vils.length>1?`${vils.length}人採集`:'採集');playClick();spawnFx(wx,wy,'#80ff80',6);return;}
-  // 移動（所有人都走）
   sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=null;u.state='moving';});
   const mIdx=(u,i)=>{const r=Math.floor(i/4),c=i%4;return{x:wx+(c-1.5)*25,y:wy+r*25};};
   sel.forEach((u,i)=>{const p=mIdx(u,i);u.tx=p.x;u.ty=p.y;u.path=null;});
-  // 軍事單位用尋路
   sel.filter(u=>u.team==='player'&&u.type!=='villager').forEach((u,i)=>{
     u.path=aStar(u.x,u.y,wx,wy);u.pi=0;});
-  playClick();spawnFx(wx,wy,'#ffd250',6);
-}
+  playClick();spawnFx(wx,wy,'#ffd250',6);}
 canvas.addEventListener('mousedown',e=>{if(e.button!==0)return;
+  const r=e.target.getBoundingClientRect?{right:0,bottom:0}:{};
+  if(e.clientY>innerHeight-68&&e.clientY<innerHeight)return; // 點到選單區不處理
   const w=sw(e.clientX,e.clientY);mouseDown={sx:e.clientX,sy:e.clientY,wx:w.x,wy:w.y};dragM=0;bxSel=0;});
 addEventListener('mousemove',e=>{if(!mouseDown)return;
   const d=e.clientX-mouseDown.sx+Math.abs(e.clientY-mouseDown.sy);
   if(d>6){dragM=1;bxSel=1;const w=sw(e.clientX,e.clientY);bxR={x1:mouseDown.wx,y1:mouseDown.wy,x2:w.x,y2:w.y};}});
 addEventListener('mouseup',e=>{if(e.button!==0||!mouseDown)return;
-  // 排除選單點擊
-  if(e.target&&e.target.closest&&e.target.closest('#bmenu')){mouseDown=null;bxSel=0;bxR=null;dragM=0;return;}
   const w=sw(e.clientX,e.clientY);
   if(bxSel&&bxR){const mnX=Math.min(bxR.x1,bxR.x2),mxX=Math.max(bxR.x1,bxR.x2),mnY=Math.min(bxR.y1,bxR.y2),mxY=Math.max(bxR.y1,bxR.y2);
     const ht=units.filter(u=>u.x>=mnX&&u.x<=mxX&&u.y>=mnY&&u.y<=mxY&&u.team==='player');
     if(ht.length){units.forEach(u=>u.sel=0);selectedBldg=null;ht.forEach(u=>u.sel=1);
-      showStatus(`已選 ${ht.length}人（${ht.filter(u=>u.type==='villager').length}村民）`);}
-  }else if(!dragM){const hu=units.find(u=>u.team==='player'&&Math.hypot(u.x-w.x,u.y-w.y)<(u.sz||20));
+      showStatus(`已選 ${ht.length}人（${ht.filter(u=>u.type==='villager').length}村民）`);}}
+  else if(!dragM){const hu=units.find(u=>u.team==='player'&&Math.hypot(u.x-w.x,u.y-w.y)<(u.sz||20));
     const any=selected().length>0;
     if(hu){units.forEach(u=>u.sel=0);selectedBldg=null;hu.sel=1;
       const nn=hu.type==='villager'?'村民':hu.type==='swordsman'?'劍兵':hu.type==='archer'?'弓兵':hu.type==='horseman'?'騎兵':hu.type;
@@ -343,20 +337,17 @@ addEventListener('keydown',e=>{
   if(e.key==='b'||e.key==='B'){const v=units.filter(u=>u.team==='player'&&u.type==='villager'&&u.sel);
     if(v.length&&wood>=30)startBuild('house');else if(v.length)showStatus('木頭不足');else showStatus('先選村民');}
   if(e.key==='Escape'){units.forEach(u=>u.sel=0);selectedBldg=null;showStatus('取消');}
-  // 編隊
   const n=parseInt(e.key);if(n>=1&&n<=9){
     if(e.ctrlKey||e.metaKey){
       grps[n]=selected().filter(u=>u.team==='player');showStatus(`編隊 ${n}`);
     }else{units.forEach(u=>u.sel=0);selectedBldg=null;
       grps[n].forEach(u=>{if(u.hp>0)u.sel=1;});
       const t=lastGrpTap[n];const now=performance.now();
-      if(t&&now-t<400){// 雙擊飛到該編隊
-        const g=grps[n].filter(u=>u.hp>0);if(g.length){const ax=g.reduce((s,u)=>s+u.x,0)/g.length,ay=g.reduce((s,u)=>s+u.y,0)/g.length;
+      if(t&&now-t<400){const g=grps[n].filter(u=>u.hp>0);if(g.length){const ax=g.reduce((s,u)=>s+u.x,0)/g.length,ay=g.reduce((s,u)=>s+u.y,0)/g.length;
           cam.x=ax-W/2/cam.zoom;cam.y=ay-H/2/cam.zoom;}}
       lastGrpTap[n]=now;
       if(grps[n].length)showStatus(`編隊 ${n}（${grps[n].length}人）`);}
-  }
-});
+  }});
 // ---- 更新 ----
 function mvUnit(v,dt){
   const dx=v.tx-v.x,dy=v.ty-v.y,d=Math.hypot(dx,dy);
@@ -368,12 +359,9 @@ function mvUnit(v,dt){
       else if(!v.tRes&&!v.tEn)v.state='idle';}
     if(v.state==='villagerWait'){v.state='idle';}
   }
-  // 尋路推進
-  if(v.path&&v.path.length>v.pi){
-    const wp=v.path[v.pi];if(Math.hypot(wp.x-v.x,wp.y-v.y)<20)v.pi++;
+  if(v.path&&v.path.length>v.pi){const wp=v.path[v.pi];if(Math.hypot(wp.x-v.x,wp.y-v.y)<20)v.pi++;
     if(v.pi<v.path.length){v.tx=v.path[v.pi].x;v.ty=v.path[v.pi].y;v.state='moving';}
-    else{v.path=null;}
-  }
+    else{v.path=null;}}
 }
 function updateVil(v,dt){
   mvUnit(v,dt);
@@ -411,7 +399,6 @@ function updateVil(v,dt){
 }
 function updateCombat(v,dt){
   if(v.hp<=0)return;
-  // 敵軍AI
   if(v.team==='enemy'&&v.state==='idle'&&!v.tEn){
     const px=v.patrolX||v.x,py=v.patrolY||v.y;
     if(Math.hypot(v.x-px,v.y-py)>120){v.tx=px;v.ty=py;v.state='moving';}
@@ -419,7 +406,6 @@ function updateCombat(v,dt){
     const cl=gameTime>=ENEMY_ATTACK_DELAY?units.find(u=>u.team==='player'&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<220):null;
     if(cl){v.tEn=cl;v.state='chase';}
   }
-  // 追擊
   if((v.state==='chase'||v.state==='attack')&&v.tEn){
     const e=v.tEn;if(e.hp<=0){v.state='idle';v.tEn=null;return;}
     const dd=Math.hypot(e.x-v.x,e.y-v.y);
@@ -431,37 +417,30 @@ function updateCombat(v,dt){
           showStatus(e.team==='enemy'?'殲滅敵軍！':'單位陣亡');}}}
     else{v.state='chase';v.tx=e.x;v.ty=e.y;}
   }
-  // 玩家自動反擊
   if(v.team==='player'&&v.type!=='villager'&&v.state==='idle'){
     const ce=units.find(u=>u.team==='enemy'&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<v.rng*1.5);
     if(ce){v.tEn=ce;v.state='attack';}
   }
-  // 村民自衛
   if(v.team==='player'&&v.type==='villager'&&v.state==='idle'){
     const ce=units.find(u=>u.team==='enemy'&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<80);
     if(ce){v.tEn=ce;v.state='chase';v.tx=ce.x;v.ty=ce.y;}
   }
 }
-// ---- 箭塔自動攻擊 ----
+// ---- 箭塔 ----
 function updateTowers(dt){
   for(const b of buildings){if(!b.complete||!b.atk)continue;
-    // 產生箭矢特效
     const target=units.find(u=>u.team==='enemy'&&u.hp>0&&Math.hypot(u.x-(b.x+b.w/2),u.y-(b.y+b.h/2))<b.rng);
     if(target){b.at-=dt;if(b.at<=0){b.at=b.cd;
       target.hp-=b.atk;spawnFx(target.x,target.y,'#ff6060',4);playHit();
-      // 箭矢線
       for(let i=0;i<3;i++){const p=.3+Math.random()*.4;
         fx.push({x:b.x+b.w/2+(target.x-b.x-b.w/2)*p,y:b.y+b.h/2+(target.y-b.y-b.h/2)*p,
           vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,life:.3,c:'#ddd',sz:2});}
       if(target.hp<=0){playDeath();spawnFx(target.x,target.y,'#ff8030',15);}}}}
 }
-// ---- 敵方AI（每2秒檢查） ----
-let eaiTimer=0;const EAI_INTERVAL=2;let eaiPhase='gather',eaiArmy=0;
-const ENEMY_ATTACK_DELAY=180; // 3分鐘冷卻
-let gameTime=0;
+// ---- 敵方AI ----
+let eaiTimer=0;const EAI_INTERVAL=2;
 function enemyAI(dt){
   eaiTimer+=dt;if(eaiTimer<EAI_INTERVAL)return;eaiTimer=0;
-  // 確認敵人單位數
   const eUnits=units.filter(u=>u.team==='enemy');
   const eVils=eUnits.filter(u=>u.type==='villager');
   const eMil=eUnits.filter(u=>u.type!=='villager'&&u.hp>0);
@@ -469,19 +448,12 @@ function enemyAI(dt){
   const hasBarracks=eBldgs.some(b=>b.type==='barracks'&&b.complete);
   const hasHouse=eBldgs.some(b=>b.type==='house'&&b.complete);
   const ePopCap=5+eBldgs.filter(b=>b.type==='house'&&b.complete).reduce((s,b)=>s+(b.pb||5),0);
-  // 如果沒敵方村民了，補充
   if(!eVils.length&&eUnits.length<ePopCap){
     const v=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+10,'villager','enemy');
-    v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;
-    units.push(v);
-  }
-  // 敵方村民做事
+    v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;units.push(v);}
   for(const v of eVils){
     if(v.state!=='idle')continue;
-    // 採資源
-    const needWood=wood<40||!hasHouse||!hasBarracks;
-    const needFood=food<60;
-    const needStone=stone<30;
+    const needWood=wood<40||!hasHouse||!hasBarracks;const needFood=food<60;const needStone=stone<30;
     if(needWood||!hasHouse){const t=trees.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='wood';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
     if(needFood){const t=bushes.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
@@ -489,51 +461,30 @@ function enemyAI(dt){
     if(needStone){const t=stones.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='stone';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
   }
-  // 敵方資源送達邏輯（村民回 etc 時掉資源）
   for(const v of eVils){
     if(!v.mv&&v.state==='returning'){
-      if(v.gType==='wood')wood+=Math.floor(v.ca*.5);
-      else if(v.gType==='food')food+=Math.floor(v.ca*.5);
-      else if(v.gType==='stone')stone+=Math.floor(v.ca*.5);
+      if(v.gType==='wood')wood+=Math.floor(v.ca*.5);else if(v.gType==='food')food+=Math.floor(v.ca*.5);else if(v.gType==='stone')stone+=Math.floor(v.ca*.5);
       v.ca=0;const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:stones;
       const nxt=pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(nxt){v.tRes=nxt;const e=edgeOf(nxt,v);v.tx=e.x;v.ty=e.y;v.state='moving';}
-      else v.state='idle';
-    }
-    // 如果村民資源滿了回 etc
+      else v.state='idle';}
     if(v.ca>=v.cm&&v.state==='gathering'){const c=tcCenter(etc);v.tx=c.x;v.ty=c.y;v.state='returning';}
   }
-  // 用敵方資源蓋建築
-  const eResources={wood,food,stone};// 共用資源池？簡化：敵方有自己的隱藏資源
-  // 實際做：敵方資源直接從地圖全局扣（簡化）
-  if(!hasHouse&&wood>=30&&eUnits.length<ePopCap){
-    const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60,76,66);
-    if(sp){wood-=30;const b={x:sp.x,y:sp.y,w:76,h:66,type:'house',hp:1,maxHp:200,name:'房屋',
-      p:0,bt:5,complete:0,pb:5,team:'enemy'};
-      buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{
-        v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
-  if(!hasBarracks&&wood>=50&&food>=20){
-    const sp=findSpot(etc.x-40+Math.random()*80,etc.y-80,86,78);
-    if(sp){wood-=50;food-=20;const b={x:sp.x,y:sp.y,w:86,h:78,type:'barracks',hp:1,maxHp:400,name:'兵營',
-      p:0,bt:8,complete:0,pb:0,team:'enemy'};
-      buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{
-        v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
-  // 造兵
+  if(!hasHouse&&wood>=30&&eUnits.length<ePopCap){const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60,76,66);
+    if(sp){wood-=30;const b={x:sp.x,y:sp.y,w:76,h:66,type:'house',hp:1,maxHp:200,name:'房屋',p:0,bt:5,complete:0,pb:5,team:'enemy'};
+      buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
+  if(!hasBarracks&&wood>=50&&food>=20){const sp=findSpot(etc.x-40+Math.random()*80,etc.y-80,86,78);
+    if(sp){wood-=50;food-=20;const b={x:sp.x,y:sp.y,w:86,h:78,type:'barracks',hp:1,maxHp:400,name:'兵營',p:0,bt:8,complete:0,pb:0,team:'enemy'};
+      buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
   if(hasBarracks&&eMil.length<8&&eUnits.length<ePopCap&&food>=60&&wood>=10){
-    const types=['swordsman','archer','horseman'];const type=types[Math.floor(Math.random()*types.length)];
-    const d=UNIT_DEFS[type];
-    if(canAfford(d.cost)){spend(d.cost);
-      const u=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+30,type,'enemy');
-      u.patrolX=etc.x;u.patrolY=etc.y;units.push(u);upPop();}
-  }
-  // 攻擊：當敵軍有4+單位，派去打玩家（3分鐘後才開始）
+    const types=['swordsman','archer','horseman'];const type=types[Math.floor(Math.random()*types.length)];const d=UNIT_DEFS[type];
+    if(canAfford(d.cost)){spend(d.cost);const u=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+30,type,'enemy');
+      u.patrolX=etc.x;u.patrolY=etc.y;units.push(u);upPop();}}
   const attUnits=eUnits.filter(u=>u.type!=='villager'&&u.hp>0);
   if(gameTime>=ENEMY_ATTACK_DELAY&&attUnits.length>=3&&Math.random()<.3){
     const target=units.find(u=>u.team==='player'&&u.hp>0)||tc;
-    attUnits.forEach(u=>{u.tEn=target;u.state='chase';
-      if(target.hp)u.tx=target.x;else u.tx=tc.x+50;u.ty=tc.y+50;});
-    showStatus('⚔️ 敵軍來襲！');
-  }
+    attUnits.forEach(u=>{u.tEn=target;u.state='chase';if(target.hp)u.tx=target.x;else u.tx=tc.x+50;u.ty=tc.y+50;});
+    showStatus('⚔️ 敵軍來襲！');}
 }
 let last=performance.now();
 function update(dt){
@@ -545,40 +496,36 @@ function update(dt){
     p.vx*=.82;p.vy*=.82;p.life-=dt*2.5;if(p.life<=0)fx.splice(i,1);}
   if(statusTimer>0){statusTimer-=dt;if(statusTimer<=0)statusEl.style.opacity=0;}
   upPop();rdMenu();upIdle();upGrpLabels();
-  // 倒數計時
   const remaining=ENEMY_ATTACK_DELAY-gameTime;
   if(remaining>0){const m=Math.floor(remaining/60),s=Math.floor(remaining%60);timerEl.textContent=`⚔️ ${m}:${String(s).padStart(2,'0')}`;}
   else{timerEl.textContent='⚔️ 已開戰！';}
 }
-// ---- UI ----
-let mHtml='',mDisp='none';
+// ---- UI（用 onclick 屬性直接綁，最穩定） ----
 function rdMenu(){
   const m=document.getElementById('bmenu');const sel=selected();
   let h='',d='none';
   if(sel.length){const vs=sel.filter(u=>u.type==='villager'&&u.team==='player');
     if(vs.length){
       d='flex';
-      h=`<button data-a='bld' data-t='house' ${canAfford({wood:30})?'':'disabled'}>🏠房屋 <span class="cost">🪵30</span></button>
-      <button data-a='bld' data-t='barracks' ${canAfford({wood:50,food:20})?'':'disabled'}>⚔️兵營 <span class="cost">🪵50</span><span class="costF">🍓20</span></button>
-      <button data-a='bld' data-t='tower' ${canAfford({wood:60,stone:40})?'':'disabled'}>🏗️箭塔 <span class="cost">🪵60</span><span class="costS">🪨40</span></button>
-      <button data-a='bld' data-t='wall' ${canAfford({wood:10})?'':'disabled'}>🧱城牆 <span class="cost">🪵10</span></button>`;}}
+      h=`<button onclick="startBuild('house')" ${canAfford({wood:30})?'':'disabled'}>🏠房屋 <span class="cost">🪵30</span></button>
+      <button onclick="startBuild('barracks')" ${canAfford({wood:50,food:20})?'':'disabled'}>⚔️兵營 <span class="cost">🪵50</span><span class="costF">🍓20</span></button>
+      <button onclick="startBuild('tower')" ${canAfford({wood:60,stone:40})?'':'disabled'}>🏗️箭塔 <span class="cost">🪵60</span><span class="costS">🪨40</span></button>
+      <button onclick="startBuild('wall')" ${canAfford({wood:10})?'':'disabled'}>🧱城牆 <span class="cost">🪵10</span></button>`;}}
   else if(selectedBldg&&selectedBldg.type==='tc'){
-    d='flex';const ok=food>=50&&units.length<popCap;
-    h=`<span class="label">🏰主堡</span><button data-a='tVil' ${ok?'':'disabled'}>👤村民 <span class="costF">🍓50</span></button>`;}
+    d='flex';
+    h=`<span class="label">🏰主堡</span><button onclick="trainVillager()" ${food>=50&&units.length<popCap?'':'disabled'}>👤村民 <span class="costF">🍓50</span></button>`;}
   else if(selectedBldg&&selectedBldg.type==='barracks'&&selectedBldg.complete&&selectedBldg.team==='player'){
-    d='flex';const cs=canAfford({food:60,wood:10})&&units.length<popCap,ca=canAfford({food:40,wood:40})&&units.length<popCap,ch=canAfford({food:80,wood:20})&&units.length<popCap;
-    h=`<span class="label">⚔️兵營</span><button data-a='tr' data-t='swordsman' ${cs?'':'disabled'}>🗡️劍兵 <span class="costF">🍓60</span><span class="cost">🪵10</span></button>
-    <button data-a='tr' data-t='archer' ${ca?'':'disabled'}>🏹弓兵 <span class="costF">🍓40</span><span class="cost">🪵40</span></button>
-    <button data-a='tr' data-t='horseman' ${ch?'':'disabled'}>🐴騎兵 <span class="costF">🍓80</span><span class="cost">🪵20</span></button>`;}
-  else if(selectedBldg&&selectedBldg.complete){d='flex';const ic=selectedBldg.type==='house'?'🏠':'⚔️';
+    d='flex';
+    h=`<span class="label">⚔️兵營</span>
+    <button onclick="trainUnit('swordsman')" ${canAfford({food:60,wood:10})&&units.length<popCap?'':'disabled'}>🗡️劍兵 <span class="costF">🍓60</span><span class="cost">🪵10</span></button>
+    <button onclick="trainUnit('archer')" ${canAfford({food:40,wood:40})&&units.length<popCap?'':'disabled'}>🏹弓兵 <span class="costF">🍓40</span><span class="cost">🪵40</span></button>
+    <button onclick="trainUnit('horseman')" ${canAfford({food:80,wood:20})&&units.length<popCap?'':'disabled'}>🐴騎兵 <span class="costF">🍓80</span><span class="cost">🪵20</span></button>`;}
+  else if(selectedBldg&&selectedBldg.complete){d='flex';
+    const ic=selectedBldg.type==='house'?'🏠':'⚔️';
     const inf=selectedBldg.type==='house'?`<span class="label">+${selectedBldg.pb}人口</span>`:'';
     h=`<span class="label">${ic}${selectedBldg.name}</span>${inf}`;}
-  if(h!==mHtml||d!==mDisp){m.innerHTML=h;m.style.display=d;mHtml=h;mDisp=d;}
+  m.innerHTML=h;m.style.display=d;
 }
-document.getElementById('bmenu').addEventListener('click',e=>{
-  const b=e.target.closest('button');if(!b||b.disabled)return;
-  const a=b.dataset.a,t=b.dataset.t;
-  if(a==='bld')startBuild(t);else if(a==='tVil')trainVillager();else if(a==='tr')trainUnit(t);});
 function upIdle(){const idl=units.find(u=>u.team==='player'&&u.type==='villager'&&u.state==='idle'&&!u.sel);
   document.getElementById('idleBtn').style.display=idl?'block':'none';}
 let gotoIdleVil=()=>{const idl=units.find(u=>u.team==='player'&&u.type==='villager'&&u.state==='idle');
@@ -724,21 +671,15 @@ function drawBldg(b){
     ctx.fillStyle='rgba(0,0,0,.15)';ctx.beginPath();ctx.ellipse(x+w/2,y+h-4,w/2+4,5,0,0,Math.PI*2);ctx.fill();
     ctx.fillStyle=en?'#777':'#aaa';ctx.fillRect(x,y,w,h);ctx.strokeStyle=en?'#555':'#888';ctx.lineWidth=1.5;
     ctx.fillStyle=en?'#555':'#888';ctx.fillRect(x,y,w,10);
-    // 雉堞
     for(let i=0;i<5;i++){const sx=x+3+i*12;ctx.fillStyle=en?'#777':'#aaa';ctx.fillRect(sx,y-6,8,6);}
-    // 射口
-    ctx.fillStyle='#333';ctx.fillRect(x+8,y+16,5,12);ctx.fillRect(x+w-13,y+16,5,12);
-    ctx.fillRect(x+w/2-2,y+10,4,10);
-    // 屋頂
+    ctx.fillStyle='#333';ctx.fillRect(x+8,y+16,5,12);ctx.fillRect(x+w-13,y+16,5,12);ctx.fillRect(x+w/2-2,y+10,4,10);
     ctx.fillStyle=en?'#5a3030':'#8a3030';ctx.beginPath();ctx.moveTo(x-4,y-6);ctx.lineTo(x+w/2,y-22);ctx.lineTo(x+w+4,y-6);ctx.closePath();ctx.fill();
     ctx.strokeStyle='#6b3a1a';ctx.lineWidth=1.5;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x-4,y-6);ctx.lineTo(x+w/2,y-22);ctx.lineTo(x+w+4,y-6);ctx.stroke();
     ctx.fillStyle='#fff';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText('🏗️',x+w/2,y-2);
   }else if(type==='wall'){
     ctx.fillStyle='rgba(0,0,0,.15)';ctx.beginPath();ctx.ellipse(x+w/2,y+h-4,w/2+4,4,0,0,Math.PI*2);ctx.fill();
     ctx.fillStyle=en?'#666':'#9a8a6a';ctx.fillRect(x,y,w,h);ctx.strokeStyle=en?'#555':'#8a7a5a';ctx.lineWidth=1.5;ctx.strokeRect(x,y,w,h);
-    // 木紋
     ctx.strokeStyle='rgba(0,0,0,.15)';ctx.lineWidth=1;for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(x+1,y+h*i/4);ctx.lineTo(x+w-1,y+h*i/4);ctx.stroke();}
-    // 尖頂
     ctx.fillStyle=en?'#555':'#7a6a4a';ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+w/2,y-6);ctx.lineTo(x+w,y);ctx.closePath();ctx.fill();
     ctx.fillStyle='#fff';ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.fillText('🧱',x+w/2,y+h/2+3);
   }
@@ -771,11 +712,9 @@ function draw(){
   for(const p of fx){ctx.fillStyle=`${p.c}${Math.floor(p.life*255).toString(16).padStart(2,'0')}`;ctx.beginPath();ctx.arc(p.x,p.y,(p.sz||3)*p.life,0,Math.PI*2);ctx.fill();}
   trees.forEach(drawTree);bushes.forEach(drawBush);stones.forEach(drawStone);
   buildings.forEach(drawBldg);drawTC(tc);drawTC(etc);
-  // 敵營背景
   ctx.fillStyle='rgba(80,20,20,.15)';ctx.beginPath();ctx.arc(etc.x+50,etc.y+50,160,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle='rgba(180,40,40,.2)';ctx.lineWidth=1;ctx.setLineDash([4,6]);ctx.beginPath();ctx.arc(etc.x+50,etc.y+50,160,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
   ctx.fillStyle='#8a2020';ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.fillText('⚠️ 敵營',etc.x+50,etc.y-20);
-  // 主堡生產標記
   if(selectedBldg&&selectedBldg.type==='tc'){ctx.fillStyle='rgba(255,255,100,.08)';ctx.beginPath();ctx.arc(tc.x+tc.w/2,tc.y+tc.h/2,80,0,Math.PI*2);ctx.fill();}
   [...units].filter(u=>u.hp>0).sort((a,b)=>a.y-b.y).forEach(drawUnit);
   if(bxSel&&bxR){const x=Math.min(bxR.x1,bxR.x2),y=Math.min(bxR.y1,bxR.y2),w=Math.abs(bxR.x2-bxR.x1),h=Math.abs(bxR.y2-bxR.y1);
