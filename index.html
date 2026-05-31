@@ -59,7 +59,17 @@
 </div>
 <div id="idleBtn" onclick="gotoIdleVil()">⚠️ 閒置</div>
 <div id="status"></div>
-<div id="bmenu"></div>
+<div id="bmenu">
+  <span class="label" id="bmenuLabel"></span>
+  <button id="btnHouse" onclick="startBuild('house')" style="display:none">🏠房屋 <span class="cost">🪵30</span></button>
+  <button id="btnBarracks" onclick="startBuild('barracks')" style="display:none">⚔️兵營 <span class="cost">🪵50</span><span class="costF">🍓20</span></button>
+  <button id="btnTower" onclick="startBuild('tower')" style="display:none">🏗️箭塔 <span class="cost">🪵60</span><span class="costS">🪨40</span></button>
+  <button id="btnWall" onclick="startBuild('wall')" style="display:none">🧱城牆 <span class="cost">🪵10</span></button>
+  <button id="btnTrainVil" onclick="trainVillager()" style="display:none">👤村民 <span class="costF">🍓50</span></button>
+  <button id="btnSword" onclick="trainUnit('swordsman')" style="display:none">🗡️劍兵 <span class="costF">🍓60</span><span class="cost">🪵10</span></button>
+  <button id="btnArch" onclick="trainUnit('archer')" style="display:none">🏹弓兵 <span class="costF">🍓40</span><span class="cost">🪵40</span></button>
+  <button id="btnHorse" onclick="trainUnit('horseman')" style="display:none">🐴騎兵 <span class="costF">🍓80</span><span class="cost">🪵20</span></button>
+</div>
 <div id="minimap"><canvas id="mc" width="180" height="135"></canvas></div>
 <div id="grpLabels"></div>
 <script>
@@ -510,29 +520,36 @@ function update(dt){
 }
 // ---- UI（用 onclick 屬性直接綁，最穩定） ----
 function rdMenu(){
-  const m=document.getElementById('bmenu');const sel=selected();
-  let h='',d='none';
-  if(sel.length){const vs=sel.filter(u=>u.type==='villager'&&u.team==='player');
-    if(vs.length){
-      d='flex';
-      h=`<button onclick="startBuild('house')" ${canAfford({wood:30})?'':'disabled'}>🏠房屋 <span class="cost">🪵30</span></button>
-      <button onclick="startBuild('barracks')" ${canAfford({wood:50,food:20})?'':'disabled'}>⚔️兵營 <span class="cost">🪵50</span><span class="costF">🍓20</span></button>
-      <button onclick="startBuild('tower')" ${canAfford({wood:60,stone:40})?'':'disabled'}>🏗️箭塔 <span class="cost">🪵60</span><span class="costS">🪨40</span></button>
-      <button onclick="startBuild('wall')" ${canAfford({wood:10})?'':'disabled'}>🧱城牆 <span class="cost">🪵10</span></button>`;}}
-  else if(selectedBldg&&selectedBldg.type==='tc'){
-    d='flex';
-    h=`<span class="label">🏰主堡</span><button onclick="trainVillager()" ${food>=50&&units.length<popCap?'':'disabled'}>👤村民 <span class="costF">🍓50</span></button>`;}
-  else if(selectedBldg&&selectedBldg.type==='barracks'&&selectedBldg.complete&&selectedBldg.team==='player'){
-    d='flex';
-    h=`<span class="label">⚔️兵營</span>
-    <button onclick="trainUnit('swordsman')" ${canAfford({food:60,wood:10})&&units.length<popCap?'':'disabled'}>🗡️劍兵 <span class="costF">🍓60</span><span class="cost">🪵10</span></button>
-    <button onclick="trainUnit('archer')" ${canAfford({food:40,wood:40})&&units.length<popCap?'':'disabled'}>🏹弓兵 <span class="costF">🍓40</span><span class="cost">🪵40</span></button>
-    <button onclick="trainUnit('horseman')" ${canAfford({food:80,wood:20})&&units.length<popCap?'':'disabled'}>🐴騎兵 <span class="costF">🍓80</span><span class="cost">🪵20</span></button>`;}
-  else if(selectedBldg&&selectedBldg.complete){d='flex';
+  const sel=selected();const gm=document.getElementById('bmenu');
+  const show=(id,cond)=>{const e=document.getElementById(id);e.style.display=cond?'':'none';return e;};
+  const en=(id,cond)=>{const e=document.getElementById(id);e.disabled=!cond;};
+  gm.style.display='flex';
+  const vs=sel.filter(u=>u.type==='villager'&&u.team==='player');
+  if(vs.length>0){
+    show('bmenuLabel',0).textContent='';
+    en('btnHouse',canAfford({wood:30}));show('btnHouse',1);
+    en('btnBarracks',canAfford({wood:50,food:20}));show('btnBarracks',1);
+    en('btnTower',canAfford({wood:60,stone:40}));show('btnTower',1);
+    en('btnWall',canAfford({wood:10}));show('btnWall',1);
+    show('btnTrainVil',0);show('btnSword',0);show('btnArch',0);show('btnHorse',0);
+  }else if(selectedBldg&&selectedBldg.type==='tc'){
+    show('bmenuLabel',1).textContent='🏰主堡';
+    en('btnTrainVil',food>=50&&units.length<popCap);show('btnTrainVil',1);
+    show('btnHouse',0);show('btnBarracks',0);show('btnTower',0);show('btnWall',0);
+    show('btnSword',0);show('btnArch',0);show('btnHorse',0);
+  }else if(selectedBldg&&selectedBldg.type==='barracks'&&selectedBldg.complete&&selectedBldg.team==='player'){
+    show('bmenuLabel',1).textContent='⚔️兵營';
+    en('btnSword',canAfford({food:60,wood:10})&&units.length<popCap);show('btnSword',1);
+    en('btnArch',canAfford({food:40,wood:40})&&units.length<popCap);show('btnArch',1);
+    en('btnHorse',canAfford({food:80,wood:20})&&units.length<popCap);show('btnHorse',1);
+    show('btnHouse',0);show('btnBarracks',0);show('btnTower',0);show('btnWall',0);show('btnTrainVil',0);
+  }else if(selectedBldg&&selectedBldg.complete){
     const ic=selectedBldg.type==='house'?'🏠':'⚔️';
-    const inf=selectedBldg.type==='house'?`<span class="label">+${selectedBldg.pb}人口</span>`:'';
-    h=`<span class="label">${ic}${selectedBldg.name}</span>${inf}`;}
-  m.innerHTML=h;m.style.display=d;
+    const inf=selectedBldg.type==='house'?` +${selectedBldg.pb}人口`:'';
+    show('bmenuLabel',1).textContent=ic+selectedBldg.name+inf;
+    show('btnHouse',0);show('btnBarracks',0);show('btnTower',0);show('btnWall',0);
+    show('btnTrainVil',0);show('btnSword',0);show('btnArch',0);show('btnHorse',0);
+  }else{gm.style.display='none';}
 }
 function upIdle(){const idl=units.find(u=>u.team==='player'&&u.type==='villager'&&u.state==='idle'&&!u.sel);
   document.getElementById('idleBtn').style.display=idl?'block':'none';}
