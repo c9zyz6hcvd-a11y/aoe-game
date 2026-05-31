@@ -72,6 +72,8 @@ const WORLD={w:2400,h:1800,T:80};
 const cam={x:WORLD.w/2-640,y:WORLD.h/2-400,zoom:1};
 function sw(sx,sy){return{x:cam.x+sx/cam.zoom,y:cam.y+sy/cam.zoom};}
 let wood=100,food=80,stone=0;
+// 敵方獨立資源池
+let eWood=0,eFood=0,eStone=0;
 const woodEl=document.getElementById('wood'),foodEl=document.getElementById('food'),stoneEl=document.getElementById('stone'),
   popEl=document.getElementById('pop'),popCapEl=document.getElementById('popCap'),statusEl=document.getElementById('status'),
   timerEl=document.getElementById('timer'),grpLabelsEl=document.getElementById('grpLabels');
@@ -367,9 +369,13 @@ function updateVil(v,dt){
   mvUnit(v,dt);
   if(v.type!=='villager')return;
   if(!v.mv&&v.state==='returning'){
-    if(v.gType==='wood'){wood+=v.ca;woodEl.textContent=wood;}
-    else if(v.gType==='food'){food+=v.ca;foodEl.textContent=food;}
-    else if(v.gType==='stone'){stone+=v.ca;stoneEl.textContent=stone;}
+    if(v.team==='player'){
+      if(v.gType==='wood'){wood+=v.ca;woodEl.textContent=wood;}
+      else if(v.gType==='food'){food+=v.ca;foodEl.textContent=food;}
+      else if(v.gType==='stone'){stone+=v.ca;stoneEl.textContent=stone;}
+    }else{ // 敵方回資源到敵方池
+      if(v.gType==='wood')eWood+=v.ca;else if(v.gType==='food')eFood+=v.ca;else if(v.gType==='stone')eStone+=v.ca;
+    }
     if(v.ca>0){playDrop();spawnFx(v.x,v.y,'#ffd250',6);}v.ca=0;
     const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:stones;
     const nxt=(v.tRes&&v.tRes.res>0)?v.tRes:pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
@@ -379,14 +385,14 @@ function updateVil(v,dt){
   if(!v.mv&&v.state==='building'&&v.tBldg){const b=v.tBldg;
     if(!b.complete){b.p+=dt;v.cs=Math.sin(performance.now()/200)*.5+.5;
       if(b.p>=b.bt){b.complete=1;b.hp=b.maxHp;
-        if(b.type==='house'||b.pb)popCap+=b.pb;upPop();
+        if(b.type==='house'||b.pb){if(b.team==='player')popCap+=b.pb;}
         playDrop();spawnFx(b.x+b.w/2,b.y+b.h/2,'#ffd250',16);showStatus(b.name+'完成！');
         v.state='idle';v.tBldg=null;}}
     else{v.state='idle';v.tBldg=null;}
   }
   if(v.state==='gathering'&&v.tRes){const t=v.tRes;
     if(t.res<=0){v.cs=0;
-      if(v.ca>0){v.state='returning';const c=tcCenter(tc);v.tx=c.x;v.ty=c.y;}
+      if(v.ca>0){v.state='returning';const c=tcCenter(v.team==='enemy'?etc:tc);v.tx=c.x;v.ty=c.y;}
       else{const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:stones;
         const nxt=pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
         if(nxt){v.tRes=nxt;const e=edgeOf(nxt,v);v.tx=e.x;v.ty=e.y;v.state='moving';}
@@ -394,7 +400,7 @@ function updateVil(v,dt){
     else{v.gt+=dt;v.cs=(v.gt/v.gi)%1;
       if(v.gt>=v.gi){v.gt=0;const a=Math.min(2,t.res);t.res-=a;v.ca+=a;spawnChips(t,v);t.st=.15;
         if(t.type==='wood')playChop();else if(t.type==='food')playPick();else play(400,200,.06,.15,'sawtooth');
-        if(v.ca>=v.cm){const c=tcCenter(tc);v.tx=c.x;v.ty=c.y;v.state='returning';v.cs=0;}}
+        if(v.ca>=v.cm){const c=tcCenter(v.team==='enemy'?etc:tc);v.tx=c.x;v.ty=c.y;v.state='returning';v.cs=0;}}
       if(t.st>0)t.st-=dt;}}
 }
 function updateCombat(v,dt){
@@ -453,7 +459,7 @@ function enemyAI(dt){
     v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;units.push(v);}
   for(const v of eVils){
     if(v.state!=='idle')continue;
-    const needWood=wood<40||!hasHouse||!hasBarracks;const needFood=food<60;const needStone=stone<30;
+    const needWood=eWood<40||!hasHouse||!hasBarracks;const needFood=eFood<60;const needStone=eStone<30;
     if(needWood||!hasHouse){const t=trees.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='wood';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
     if(needFood){const t=bushes.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
@@ -463,22 +469,22 @@ function enemyAI(dt){
   }
   for(const v of eVils){
     if(!v.mv&&v.state==='returning'){
-      if(v.gType==='wood')wood+=Math.floor(v.ca*.5);else if(v.gType==='food')food+=Math.floor(v.ca*.5);else if(v.gType==='stone')stone+=Math.floor(v.ca*.5);
+      if(v.gType==='wood')eWood+=Math.floor(v.ca*.5);else if(v.gType==='food')eFood+=Math.floor(v.ca*.5);else if(v.gType==='stone')eStone+=Math.floor(v.ca*.5);
       v.ca=0;const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:stones;
       const nxt=pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(nxt){v.tRes=nxt;const e=edgeOf(nxt,v);v.tx=e.x;v.ty=e.y;v.state='moving';}
       else v.state='idle';}
     if(v.ca>=v.cm&&v.state==='gathering'){const c=tcCenter(etc);v.tx=c.x;v.ty=c.y;v.state='returning';}
   }
-  if(!hasHouse&&wood>=30&&eUnits.length<ePopCap){const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60,76,66);
-    if(sp){wood-=30;const b={x:sp.x,y:sp.y,w:76,h:66,type:'house',hp:1,maxHp:200,name:'房屋',p:0,bt:5,complete:0,pb:5,team:'enemy'};
+  if(!hasHouse&&eWood>=30&&eUnits.length<ePopCap){const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60,76,66);
+    if(sp){eWood-=30;const b={x:sp.x,y:sp.y,w:76,h:66,type:'house',hp:1,maxHp:200,name:'房屋',p:0,bt:5,complete:0,pb:5,team:'enemy'};
       buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
-  if(!hasBarracks&&wood>=50&&food>=20){const sp=findSpot(etc.x-40+Math.random()*80,etc.y-80,86,78);
-    if(sp){wood-=50;food-=20;const b={x:sp.x,y:sp.y,w:86,h:78,type:'barracks',hp:1,maxHp:400,name:'兵營',p:0,bt:8,complete:0,pb:0,team:'enemy'};
+  if(!hasBarracks&&eWood>=50&&eFood>=20){const sp=findSpot(etc.x-40+Math.random()*80,etc.y-80,86,78);
+    if(sp){eWood-=50;eFood-=20;const b={x:sp.x,y:sp.y,w:86,h:78,type:'barracks',hp:1,maxHp:400,name:'兵營',p:0,bt:8,complete:0,pb:0,team:'enemy'};
       buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
-  if(hasBarracks&&eMil.length<8&&eUnits.length<ePopCap&&food>=60&&wood>=10){
+  if(hasBarracks&&eMil.length<8&&eUnits.length<ePopCap&&eFood>=60&&eWood>=10){
     const types=['swordsman','archer','horseman'];const type=types[Math.floor(Math.random()*types.length)];const d=UNIT_DEFS[type];
-    if(canAfford(d.cost)){spend(d.cost);const u=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+30,type,'enemy');
+    if(eFood>=d.cost.food&&eWood>=d.cost.wood&&eStone>=(d.cost.stone||0)){eFood-=d.cost.food||0;eWood-=d.cost.wood||0;eStone-=d.cost.stone||0;const u=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+30,type,'enemy');
       u.patrolX=etc.x;u.patrolY=etc.y;units.push(u);upPop();}}
   const attUnits=eUnits.filter(u=>u.type!=='villager'&&u.hp>0);
   if(gameTime>=ENEMY_ATTACK_DELAY&&attUnits.length>=3&&Math.random()<.3){
