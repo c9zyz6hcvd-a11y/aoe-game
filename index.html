@@ -535,38 +535,54 @@ function update(dt){
   updatePopDisp(); renderBuildMenu(); updateIdleIndicator();
 }
 
-// ---- UI ----
+// ---- UI（事件委派，避免 innerHTML 吃掉點擊） ----
+let menuHtmlCache='', menuDisplayCache='';
 function renderBuildMenu(){
   const menu=document.getElementById('bmenu');
   const sel=selected();
+  let html='', disp='none';
   if(sel.length){
     const vils=sel.filter(u=>u.unitType==='villager');
     if(vils.length){
+      disp='flex';
       const canHouse=wood>=30; const canBarracks=wood>=50&&food>=20;
-      menu.style.display='flex';
-      menu.innerHTML=`<button onclick="startBuild('house')" ${canHouse?'':'disabled'}>🏠 房屋 <span class="cost">🪵30</span></button>
-        <button onclick="startBuild('barracks')" ${canBarracks?'':'disabled'}>⚔️ 兵營 <span class="cost">🪵50</span><span class="costFood">🍓20</span></button>`;
-    } else { menu.style.display='none'; }
+      html=`<button data-action='build' data-type='house' ${canHouse?'':'disabled'}>🏠 房屋 <span class="cost">🪵30</span></button>
+        <button data-action='build' data-type='barracks' ${canBarracks?'':'disabled'}>⚔️ 兵營 <span class="cost">🪵50</span><span class="costFood">🍓20</span></button>`;
+    }
   } else if(selectedBldg && selectedBldg.type==='tc'){
+    disp='flex';
     const canTrain=food>=50&&units.length<popCap;
-    menu.style.display='flex';
-    menu.innerHTML=`<span class="label">🏰 主堡</span>
-      <button onclick="trainVillager()" ${canTrain?'':'disabled'}>👤 村民 <span class="costFood">🍓50</span></button>`;
+    html=`<span class="label">🏰 主堡</span>
+      <button data-action='trainVil' ${canTrain?'':'disabled'}>👤 村民 <span class="costFood">🍓50</span></button>`;
   } else if(selectedBldg && selectedBldg.type==='barracks' && selectedBldg.complete){
+    disp='flex';
     const canSword=wood>=10&&food>=60&&units.length<popCap;
     const canArch=wood>=40&&food>=40&&units.length<popCap;
     const canHorse=wood>=20&&food>=80&&units.length<popCap;
-    menu.style.display='flex';
-    menu.innerHTML=`<span class="label">⚔️ 兵營</span>
-      <button onclick="trainUnit('swordsman')" ${canSword?'':'disabled'}>🗡️ 劍兵 <span class="costFood">🍓60</span><span class="cost">🪵10</span></button>
-      <button onclick="trainUnit('archer')" ${canArch?'':'disabled'}>🏹 弓兵 <span class="costFood">🍓40</span><span class="cost">🪵40</span></button>
-      <button onclick="trainUnit('horseman')" ${canHorse?'':'disabled'}>🐴 騎兵 <span class="costFood">🍓80</span><span class="cost">🪵20</span></button>`;
+    html=`<span class="label">⚔️ 兵營</span>
+      <button data-action='train' data-type='swordsman' ${canSword?'':'disabled'}>🗡️ 劍兵 <span class="costFood">🍓60</span><span class="cost">🪵10</span></button>
+      <button data-action='train' data-type='archer' ${canArch?'':'disabled'}>🏹 弓兵 <span class="costFood">🍓40</span><span class="cost">🪵40</span></button>
+      <button data-action='train' data-type='horseman' ${canHorse?'':'disabled'}>🐴 騎兵 <span class="costFood">🍓80</span><span class="cost">🪵20</span></button>`;
   } else if(selectedBldg && selectedBldg.complete){
+    disp='flex';
     const icon=selectedBldg.type==='house'?'🏠':'⚔️';
     const info=selectedBldg.type==='house'?`<span class="label">人口 +${selectedBldg.popBonus}</span>`:'';
-    menu.style.display='flex'; menu.innerHTML=`<span class="label">${icon} ${selectedBldg.name}</span>${info}`;
-  } else { menu.style.display='none'; }
+    html=`<span class="label">${icon} ${selectedBldg.name}</span>${info}`;
+  }
+  // 只在本質改變時才寫 DOM
+  if(html!==menuHtmlCache||disp!==menuDisplayCache){
+    menu.innerHTML=html; menu.style.display=disp;
+    menuHtmlCache=html; menuDisplayCache=disp;
+  }
 }
+// 事件委派：一次監聽，永遠有效
+document.getElementById('bmenu').addEventListener('click',e=>{
+  const btn=e.target.closest('button'); if(!btn||btn.disabled) return;
+  const action=btn.dataset.action, type=btn.dataset.type;
+  if(action==='build'){ startBuild(type); }
+  else if(action==='trainVil') trainVillager();
+  else if(action==='train') trainUnit(type);
+});
 
 function updateIdleIndicator(){
   const idle=units.find(u=>u.team==='player'&&u.unitType==='villager'&&u.state==='idle');
