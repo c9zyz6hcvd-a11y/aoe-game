@@ -37,11 +37,11 @@
   <span>👥 <b id="pop">3</b>/<b id="popCap">5</b></span>
 </div>
 <div id="hud">
-  <b>點</b>村民選取 ／ <b>拖曳</b>框選多人<br>
-  選取村民後：下方選單可<b>蓋建築</b><br>
-  點樹🌳採木 ／ 點莓果🍓採食物<br>
-  點地面 → 移動 ｜ <b>A</b> → 全選<br>
-  兩指滑動：移動鏡頭 ｜ 捏合：縮放
+  <b>點</b>村民選取 ｜ <b>拖曳</b>框選<br>
+  選村民 → 下方<b>蓋建築</b> ｜ 點<span style="color:#c8b080">主堡</span>→<b>生村民</b><br>
+  點樹🌳採木 ｜ 點莓果🍓採食物<br>
+  <b>A</b>全選 ｜ <b>ESC</b>取消 ｜ 滑鼠滾輪平移(觸控板兩指)<br>
+  🎁 起始資源：🪵100 🍓80
 </div>
 <div id="status"></div>
 <div id="bmenu"></div>
@@ -56,8 +56,8 @@ const WORLD={w:2400,h:1800,tile:80};
 const cam={x:WORLD.w/2-640, y:WORLD.h/2-400, zoom:1};
 function sw(sx,sy){ return {x:cam.x+sx/cam.zoom, y:cam.y+sy/cam.zoom}; }
 
-// ---- 資源 ----
-let wood=0, food=0;
+// ---- 資源（新手禮包） ----
+let wood=100, food=80;
 const woodEl=document.getElementById('wood'), foodEl=document.getElementById('food');
 const popEl=document.getElementById('pop'), popCapEl=document.getElementById('popCap');
 const statusEl=document.getElementById('status');
