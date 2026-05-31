@@ -302,6 +302,8 @@ addEventListener('mousemove',e=>{if(!mouseDown)return;
   const d=e.clientX-mouseDown.sx+Math.abs(e.clientY-mouseDown.sy);
   if(d>6){dragM=1;bxSel=1;const w=sw(e.clientX,e.clientY);bxR={x1:mouseDown.wx,y1:mouseDown.wy,x2:w.x,y2:w.y};}});
 addEventListener('mouseup',e=>{if(e.button!==0||!mouseDown)return;
+  // 點到選單區不處理，讓按鈕 click 事件正常工作
+  if(e.clientY>innerHeight-72){mouseDown=null;bxSel=0;bxR=null;dragM=0;return;}
   const w=sw(e.clientX,e.clientY);
   if(bxSel&&bxR){const mnX=Math.min(bxR.x1,bxR.x2),mxX=Math.max(bxR.x1,bxR.x2),mnY=Math.min(bxR.y1,bxR.y2),mxY=Math.max(bxR.y1,bxR.y2);
     const ht=units.filter(u=>u.x>=mnX&&u.x<=mxX&&u.y>=mnY&&u.y<=mxY&&u.team==='player');
