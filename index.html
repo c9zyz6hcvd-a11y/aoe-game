@@ -49,6 +49,7 @@
   <span>🍓<b id="food">80</b></span>
   <span>🪨<b id="stone">0</b></span>
   <span>👥<b id="pop">3</b>/<b id="popCap">5</b></span>
+  <span id="timer" style="color:#ffd250;"></span>
 </div>
 <div id="hud">
   框村民→蓋🏠🪨 點主堡→生村民｜點敵→攻擊<br>
@@ -70,7 +71,7 @@ const cam={x:WORLD.w/2-640,y:WORLD.h/2-400,zoom:1};
 function sw(sx,sy){return{x:cam.x+sx/cam.zoom,y:cam.y+sy/cam.zoom};}
 let wood=100,food=80,stone=0;
 const woodEl=document.getElementById('wood'),foodEl=document.getElementById('food'),stoneEl=document.getElementById('stone'),
-  popEl=document.getElementById('pop'),popCapEl=document.getElementById('popCap'),statusEl=document.getElementById('status'),
+  popEl=document.getElementById('pop'),popCapEl=document.getElementById('popCap'),statusEl=document.getElementById('status'),timerEl=document.getElementById('timer'),
   grpLabelsEl=document.getElementById('grpLabels');
 let statusTimer=0;
 function showStatus(m){statusEl.textContent=m;statusEl.style.opacity=1;statusTimer=3;}
@@ -453,6 +454,8 @@ function updateTowers(dt){
 }
 // ---- 敵方AI（每2秒檢查） ----
 let eaiTimer=0;const EAI_INTERVAL=2;let eaiPhase='gather',eaiArmy=0;
+const ENEMY_ATTACK_DELAY=180; // 3分鐘冷卻
+let gameTime=0;
 function enemyAI(dt){
   eaiTimer+=dt;if(eaiTimer<EAI_INTERVAL)return;eaiTimer=0;
   // 確認敵人單位數
@@ -520,10 +523,9 @@ function enemyAI(dt){
       const u=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+30,type,'enemy');
       u.patrolX=etc.x;u.patrolY=etc.y;units.push(u);upPop();}
   }
-  // 我方村民歸還資源：簡化——每次村民回 etc 直接加
-  // 攻擊：當敵軍有4+單位，派去打玩家
+  // 攻擊：當敵軍有4+單位，派去打玩家（3分鐘後才開始）
   const attUnits=eUnits.filter(u=>u.type!=='villager'&&u.hp>0);
-  if(attUnits.length>=3&&Math.random()<.3){
+  if(gameTime>=ENEMY_ATTACK_DELAY&&attUnits.length>=3&&Math.random()<.3){
     const target=units.find(u=>u.team==='player'&&u.hp>0)||tc;
     attUnits.forEach(u=>{u.tEn=target;u.state='chase';
       if(target.hp)u.tx=target.x;else u.tx=tc.x+50;u.ty=tc.y+50;});
@@ -535,11 +537,15 @@ function update(dt){
   for(let i=units.length-1;i>=0;i--){if(units[i].hp<=0){units.splice(i,1);upPop();}}
   for(const v of units){if(v.state==='building'&&v.tBldg&&v.tBldg.complete){v.state='idle';v.tBldg=null;}}
   units.forEach(v=>{updateVil(v,dt);updateCombat(v,dt);});
-  updateTowers(dt);enemyAI(dt);
+  gameTime+=dt;updateTowers(dt);enemyAI(dt);
   for(let i=fx.length-1;i>=0;i--){const p=fx[i];p.x+=p.vx*dt;p.y+=p.vy*dt;
     p.vx*=.82;p.vy*=.82;p.life-=dt*2.5;if(p.life<=0)fx.splice(i,1);}
   if(statusTimer>0){statusTimer-=dt;if(statusTimer<=0)statusEl.style.opacity=0;}
   upPop();rdMenu();upIdle();upGrpLabels();
+  // 倒數計時
+  const remaining=ENEMY_ATTACK_DELAY-gameTime;
+  if(remaining>0){const m=Math.floor(remaining/60),s=Math.floor(remaining%60);timerEl.textContent=`⚔️ ${m}:${String(s).padStart(2,'0')}`;}
+  else{timerEl.textContent='⚔️ 已開戰！';}
 }
 // ---- UI ----
 let mHtml='',mDisp='none';
