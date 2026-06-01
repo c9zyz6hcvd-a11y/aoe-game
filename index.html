@@ -2,11 +2,29 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>RTS</title>
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#1a1a1a;font-family:sans-serif;}
-  #c{display:block;cursor:crosshair;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#1a1a1a;font-family:sans-serif;
+    touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
+  #c{display:block;cursor:crosshair;touch-action:none;}
+  /* ---- 行動裝置 ---- */
+  @media(max-width:768px){
+    #topbar{height:44px;font-size:15px;gap:18px;}
+    #hud{display:none;} /* 手機隱藏鍵盤提示 */
+    #wavebar{font-size:12px;padding:3px 12px 5px;}
+    #bmenu{height:80px;gap:5px;padding:0 6px;}
+    #bmenu button{font-size:13px;padding:10px 12px;border-radius:10px;min-height:52px;}
+    #idleBtn{top:52px;font-size:14px;padding:8px 16px;}
+    #minimap{width:130px;height:98px;bottom:88px;}
+    #mobileBar{display:flex;}
+  }
+  #mobileBar{display:none;position:fixed;bottom:82px;left:8px;gap:8px;z-index:12;flex-direction:column;}
+  #mobileBar button{background:rgba(0,0,0,.65);border:2px solid #888;color:#fff;
+    font-size:20px;width:52px;height:52px;border-radius:12px;cursor:pointer;backdrop-filter:blur(4px);}
+  #mobileBar button:active{background:rgba(255,210,80,.3);border-color:#ffd250;}
   #topbar{position:fixed;top:0;left:0;right:0;height:36px;background:rgba(0,0,0,.75);
     display:flex;align-items:center;justify-content:center;gap:22px;
     color:#fff;font-size:13px;font-weight:bold;pointer-events:none;border-bottom:1px solid #444;z-index:5;}
@@ -16,11 +34,11 @@
     background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;
     display:none;border:1px solid #ffd250;transition:all .15s;}
   #idleBtn:hover{background:rgba(60,50,20,.8);transform:scale(1.04);}
-  #status{position:fixed;bottom:74px;left:50%;transform:translateX(-50%);
+  #status{position:fixed;bottom:78px;left:50%;transform:translateX(-50%);
     color:#ffd250;font-size:13px;font-weight:bold;pointer-events:none;
     background:rgba(0,0,0,.5);padding:4px 14px;border-radius:20px;
     opacity:0;transition:opacity .3s;z-index:10;}
-  #bmenu{position:fixed;bottom:0;left:0;right:0;height:68px;
+  #bmenu{position:fixed;bottom:0;left:0;right:0;height:72px;
     background:rgba(12,12,12,.85);backdrop-filter:blur(4px);
     display:none;align-items:center;justify-content:center;gap:6px;
     border-top:2px solid #555;z-index:10;padding:0 10px;
@@ -109,6 +127,11 @@
   </div>
 </div>
 <div id="minimap"><canvas id="mc" width="180" height="135"></canvas></div>
+<div id="mobileBar">
+  <button onclick="selectAllVils()" title="全選村民">👨‍🌾</button>
+  <button onclick="selectAllMil()" title="全選士兵">⚔️</button>
+  <button onclick="escAction()" title="取消">✖️</button>
+</div>
 <div id="grpLabels"></div>
 <div id="gameover" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);
   z-index:200;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;">
@@ -415,6 +438,79 @@ function aStar(sx,sy,ex,ey){
       if(ei>=0){if(ng<open[ei].g){open[ei].g=ng;open[ei].f=nf;open[ei].px=cur.x;open[ei].py=cur.y;}}
       else open.push({f:nf,g:ng,x:nx,y:ny,px:cur.x,py:cur.y});}}
   return null;}
+// ---- 行動裝置偵測與初始化 ----
+const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||window.innerWidth<768;
+if(isMobile){cam.zoom=0.45;} // 手機預設縮小
+function selectAllVils(){units.forEach(u=>{u.sel=u.team==='player'&&u.type==='villager'?1:0;});selectedBldg=null;showStatus('全選村民');}
+function selectAllMil(){units.forEach(u=>{u.sel=u.team==='player'&&u.type!=='villager'?1:0;});selectedBldg=null;showStatus('全選士兵');}
+function escAction(){units.forEach(u=>u.sel=0);selectedBldg=null;showStatus('取消');}
+
+// ---- 觸控輸入（iPhone / iPad） ----
+let pinchDist0=0, pinchCam0=null, panTouch=null;
+function touchPt(t){return{x:t.clientX,y:t.clientY};}
+function midPt(t1,t2){return{x:(t1.clientX+t2.clientX)/2,y:(t1.clientY+t2.clientY)/2};}
+function pinchD(t1,t2){return Math.hypot(t1.clientX-t2.clientX,t1.clientY-t2.clientY);}
+
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  if(e.touches.length===1){
+    const t=e.touches[0];
+    // 模擬 mousedown
+    canvas.dispatchEvent(new MouseEvent('mousedown',{button:0,clientX:t.clientX,clientY:t.clientY,bubbles:true}));
+    panTouch={sx:t.clientX,sy:t.clientY,cx:cam.x,cy:cam.y};
+  }else if(e.touches.length===2){
+    pinchDist0=pinchD(e.touches[0],e.touches[1]);
+    const m=midPt(e.touches[0],e.touches[1]);
+    pinchCam0={...sw(m.x,m.y),mx:m.x,my:m.y,zoom:cam.zoom};
+    panTouch=null;
+    // 取消正在進行的框選
+    mouseDown=null;bxSel=0;bxR=null;dragM=0;
+  }
+},{passive:false});
+
+canvas.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===1&&panTouch){
+    const t=e.touches[0];
+    const dx=t.clientX-panTouch.sx, dy=t.clientY-panTouch.sy;
+    if(Math.abs(dx)+Math.abs(dy)>6){
+      dragM=1;bxSel=1;
+      // 單指：平移地圖
+      cam.x=panTouch.cx-dx/cam.zoom;cam.y=panTouch.cy-dy/cam.zoom;
+      mouseDown=null; // 取消點擊邏輯
+    }
+  }else if(e.touches.length===2&&pinchCam0){
+    const d=pinchD(e.touches[0],e.touches[1]);
+    const m=midPt(e.touches[0],e.touches[1]);
+    const worldPivot=sw(m.x,m.y);
+    cam.zoom=Math.min(2.5,Math.max(.2,pinchCam0.zoom*(d/pinchDist0)));
+    // 讓捏合中心點保持不動
+    cam.x=worldPivot.x-m.x/cam.zoom;
+    cam.y=worldPivot.y-m.y/cam.zoom;
+  }
+},{passive:false});
+
+canvas.addEventListener('touchend',e=>{
+  e.preventDefault();
+  const changed=e.changedTouches[0];
+  if(e.touches.length===0){
+    if(!dragM&&changed){
+      // 單指輕點 → 模擬完整 mousedown+mouseup 流程
+      if(!mouseDown){
+        canvas.dispatchEvent(new MouseEvent('mousedown',{button:0,clientX:changed.clientX,clientY:changed.clientY,bubbles:true}));
+      }
+      canvas.dispatchEvent(new MouseEvent('mouseup',{button:0,clientX:changed.clientX,clientY:changed.clientY,bubbles:true}));
+    }
+    panTouch=null;mouseDown=null;bxSel=0;bxR=null;dragM=0;pinchCam0=null;
+  }else if(e.touches.length===1){
+    const t=e.touches[0];
+    panTouch={sx:t.clientX,sy:t.clientY,cx:cam.x,cy:cam.y};
+    pinchCam0=null;dragM=0;
+  }
+},{passive:false});
+
+// 防止長按出現系統選單（移至下方統一處理）
+
 // ---- 輸入 ----
 let mouseDown=null,bxSel=0,bxR=null,dragM=0;
 const grps={};for(let i=1;i<=9;i++)grps[i]=[];
