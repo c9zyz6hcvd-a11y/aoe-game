@@ -593,7 +593,7 @@ function mvUnit(v,dt){
       spawnDust(v.x,v.y,heavy);
       if(v.team==='player')playStep(heavy);
     }
-  else{v.mv=0;v.x=v.tx;v.y=v.ty;
+  }else{v.mv=0;v.x=v.tx;v.y=v.ty;
     if(v.state==='moving'){
       if(v.tRes&&v.tRes.res>0)v.state='gathering';
       else if(v.tEn&&v.tEn.hp>0)v.state='chase';
