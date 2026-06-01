@@ -9,8 +9,6 @@
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#1a1a1a;font-family:sans-serif;}
   #c{display:block;cursor:crosshair;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
-  /* modal 按鈕一定要可點 */
-  #keyModal,#keyModal *{pointer-events:auto !important;touch-action:auto !important;user-select:auto;}
   /* ---- 行動裝置 ---- */
   @media(max-width:768px){
     #topbar{height:44px;font-size:15px;gap:18px;}
@@ -68,18 +66,6 @@
   #wavebar .wfg{background:#ff7030;height:4px;border-radius:3px;transition:width .5s;}
   #aiStatus{position:fixed;top:44px;right:120px;background:rgba(0,60,120,.7);color:#80d0ff;
     font-size:11px;padding:3px 10px;border-radius:12px;z-index:5;pointer-events:none;display:none;}
-  #keyModal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;
-    display:flex;align-items:center;justify-content:center;}
-  #keyModal .box{background:#1a1a2e;border:1px solid #444;border-radius:12px;
-    padding:28px 36px;color:#eee;text-align:center;max-width:380px;width:90%;}
-  #keyModal h2{margin:0 0 8px;font-size:18px;}
-  #keyModal p{color:#aaa;font-size:13px;margin:0 0 16px;}
-  #keyModal input{width:100%;box-sizing:border-box;padding:8px 12px;border-radius:6px;
-    border:1px solid #555;background:#111;color:#fff;font-size:13px;margin-bottom:12px;}
-  #keyModal .btns{display:flex;gap:8px;justify-content:center;}
-  #keyModal button{padding:8px 20px;border-radius:7px;border:none;cursor:pointer;font-weight:bold;font-size:13px;}
-  #keyModal .ok{background:#ffd250;color:#111;}
-  #keyModal .skip{background:#444;color:#ccc;}
   #techPanel{display:none;}
 </style>
 </head>
@@ -115,17 +101,6 @@
   <button id="btnT2" onclick="doResearch('military')" style="display:none">⚔️軍事訓練 <span class="costF">🍓60</span><span class="cost">🪵20</span></button>
   <button id="btnT3" onclick="doResearch('speed')" style="display:none">🏃行軍速度 <span class="costF">🍓50</span></button>
   <button id="btnT4" onclick="doResearch('heal')" style="display:none">🏥急救術 <span class="costF">🍓40</span><span class="costS">🪨20</span></button>
-</div>
-<div id="keyModal">
-  <div class="box">
-    <h2>🤖 DeepSeek AI 敵方大腦</h2>
-    <p>輸入 DeepSeek API Key 讓敵方 AI 更聰明（可略過用規則 AI）</p>
-    <input id="keyInput" type="password" placeholder="sk-..." />
-    <div class="btns">
-      <button class="ok" onclick="initWithKey()">啟動 AI</button>
-      <button class="skip" onclick="skipKey()">跳過</button>
-    </div>
-  </div>
 </div>
 <div id="minimap"><canvas id="mc" width="180" height="135"></canvas></div>
 <div id="mobileBar">
@@ -179,14 +154,14 @@ let researchQueue=null; // currently researching tech key
 let dsKey='', dsEnabled=false, dsThinking=false, dsDecision=null, dsTimer=0;
 const DS_INTERVAL=12;
 const aiStatusEl=document.getElementById('aiStatus');
-function initWithKey(){
-  dsKey=document.getElementById('keyInput').value.trim();
-  if(dsKey){dsEnabled=true;}
-  document.getElementById('keyModal').style.display='none';
-}
-function skipKey(){document.getElementById('keyModal').style.display='none';}
-// pre-fill from localStorage
-(()=>{const k=localStorage.getItem('dsKey');if(k){document.getElementById('keyInput').value=k;}})();
+// 用原生 prompt 詢問 API Key（100% 可點，無 z-index 問題）
+setTimeout(()=>{
+  const saved=localStorage.getItem('dsKey');
+  if(saved){dsKey=saved;dsEnabled=true;showStatus('🤖 DeepSeek AI 已啟動');return;}
+  const k=prompt('🤖 DeepSeek AI 大腦\n\n輸入 API Key 讓敵方更聰明\n（直接按取消 = 用規則 AI）\n\nplatform.deepseek.com 申請');
+  if(k&&k.trim()){dsKey=k.trim();dsEnabled=true;localStorage.setItem('dsKey',k.trim());showStatus('🤖 DeepSeek AI 已啟動！');}
+  else{showStatus('使用規則 AI');}
+},800);
 async function callDeepSeek(){
   if(!dsEnabled||dsThinking)return;
   dsThinking=true; aiStatusEl.style.display='block';
