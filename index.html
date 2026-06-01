@@ -72,6 +72,16 @@
 </div>
 <div id="minimap"><canvas id="mc" width="180" height="135"></canvas></div>
 <div id="grpLabels"></div>
+<div id="gameover" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);
+  z-index:200;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;">
+  <div id="goIcon" style="font-size:60px;margin-bottom:12px;"></div>
+  <div id="goMsg" style="font-size:26px;font-weight:bold;margin-bottom:8px;"></div>
+  <div id="goSub" style="font-size:14px;color:#aaa;margin-bottom:24px;"></div>
+  <button onclick="location.reload()" style="font-size:16px;padding:12px 32px;
+    background:#ffd250;color:#111;border:none;border-radius:10px;cursor:pointer;font-weight:bold;">
+    再玩一局
+  </button>
+</div>
 <script>
 const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
 const mc=document.getElementById('mc'),mctx=mc.getContext('2d');
@@ -157,8 +167,19 @@ function trainUnit(type){
   u.state='moving';units.push(u);upPop();
   playClick();spawnFx(u.x,u.y,'#80c0ff',10);showStatus('⚔️ '+def.name);}
 // ---- TC ----
-const tc={x:WORLD.w/2-280,y:WORLD.h/2-40,w:100,h:100};
-const etc={x:WORLD.w-250,y:WORLD.h/2-40,w:100,h:100,team:'enemy'};
+const tc={x:WORLD.w/2-280,y:WORLD.h/2-40,w:100,h:100,hp:1000,mh:1000,team:'player'};
+const etc={x:WORLD.w-250,y:WORLD.h/2-40,w:100,h:100,hp:1000,mh:1000,team:'enemy'};
+// 勝負
+let isGameOver=false;
+function endGame(win){
+  if(isGameOver)return; isGameOver=true;
+  const el=document.getElementById('gameover');
+  el.style.display='flex';
+  document.getElementById('goIcon').textContent=win?'🏆':'💀';
+  document.getElementById('goMsg').textContent=win?'你贏了！':'你輸了！';
+  const t=Math.floor(gameTime/60)+'分'+Math.floor(gameTime%60)+'秒';
+  document.getElementById('goSub').textContent=win?`摧毀敵堡，歷時 ${t}`:`主堡淪陷，歷時 ${t}`;
+}
 function tcCenter(t=tc){return{x:t.x+t.w/2,y:t.y+t.h/2};}
 // ---- 地圖物件 ----
 const TREE_R=22;const trees=[];
@@ -280,7 +301,13 @@ function aStar(sx,sy,ex,ey){
 let mouseDown=null,bxSel=0,bxR=null,dragM=0;
 const grps={};for(let i=1;i<=9;i++)grps[i]=[];
 let lastGrpTap={},grpTapTimer=0;
-function findEnemyAt(wx,wy){return units.find(u=>u.team==='enemy'&&u.hp>0&&Math.hypot(u.x-wx,u.y-wy)<(u.sz||20)+8);}
+function findEnemyAt(wx,wy){
+  const u=units.find(u=>u.team==='enemy'&&u.hp>0&&Math.hypot(u.x-wx,u.y-wy)<(u.sz||20)+8);
+  if(u)return u;
+  // 也允許點敵方主堡攻擊
+  if(etc.hp>0&&wx>=etc.x-10&&wx<=etc.x+etc.w+10&&wy>=etc.y-10&&wy<=etc.y+etc.h+10)return etc;
+  return null;
+}
 function edgeOf(t,v){const d=Math.hypot(t.x-v.x,t.y-v.y)||.001;return{x:t.x+(v.x-t.x)/d*(t.r+18),y:t.y+(v.y-t.y)/d*(t.r+18)};}
 function issueCmd(wx,wy){
   const sel=selected();if(!sel.length)return;selectedBldg=null;
@@ -425,15 +452,20 @@ function updateCombat(v,dt){
     if(cl){v.tEn=cl;v.state='chase';}
   }
   if((v.state==='chase'||v.state==='attack')&&v.tEn){
-    const e=v.tEn;if(e.hp<=0){v.state='idle';v.tEn=null;return;}
-    const dd=Math.hypot(e.x-v.x,e.y-v.y);
-    if(dd<=v.rng){v.state='attack';v.tx=v.x;v.ty=v.y;
+    const e=v.tEn;
+    if(e.hp!==undefined&&e.hp<=0){v.state='idle';v.tEn=null;return;}
+    // 目標座標：單位用 x/y，建築用中心點
+    const ex=e.w?(e.x+e.w/2):e.x, ey=e.h?(e.y+e.h/2):e.y;
+    const dd=Math.hypot(ex-v.x,ey-v.y);
+    if(dd<=v.rng+20){v.state='attack';v.tx=v.x;v.ty=v.y;
       v.at-=dt;
       if(v.at<=0){v.at=v.cd;
-        e.hp-=v.atk;spawnFx(e.x,e.y,'#ff4040',5);playHit();
-        if(e.hp<=0){playDeath();spawnFx(e.x,e.y,'#ff8030',20);
-          showStatus(e.team==='enemy'?'殲滅敵軍！':'單位陣亡');}}}
-    else{v.state='chase';v.tx=e.x;v.ty=e.y;}
+        e.hp-=v.atk;spawnFx(ex,ey,'#ff4040',5);playHit();
+        if(e.hp!==undefined&&e.hp<=0){
+          playDeath();spawnFx(ex,ey,'#ff8030',20);
+          const isTc=(e===tc||e===etc);
+          if(!isTc)showStatus(e.team==='enemy'?'殲滅敵軍！':'單位陣亡');}}}
+    else{v.state='chase';v.tx=ex;v.ty=ey;}
   }
   if(v.team==='player'&&v.type!=='villager'&&v.state==='idle'){
     const ce=units.find(u=>u.team==='enemy'&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<v.rng*1.5);
@@ -466,7 +498,9 @@ function enemyAI(dt){
   const hasBarracks=eBldgs.some(b=>b.type==='barracks'&&b.complete);
   const hasHouse=eBldgs.some(b=>b.type==='house'&&b.complete);
   const ePopCap=5+eBldgs.filter(b=>b.type==='house'&&b.complete).reduce((s,b)=>s+(b.pb||5),0);
-  if(!eVils.length&&eUnits.length<ePopCap){
+  // 最多養 3 個敵方村民，有足夠食物才生
+  if(eVils.length<3&&eUnits.length<ePopCap&&(eFood>=50||eVils.length===0)){
+    if(eVils.length>0)eFood=Math.max(0,eFood-50);
     const v=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+10,'villager','enemy');
     v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;units.push(v);}
   for(const v of eVils){
@@ -501,15 +535,21 @@ function enemyAI(dt){
   const attUnits=eUnits.filter(u=>u.type!=='villager'&&u.hp>0);
   if(gameTime>=ENEMY_ATTACK_DELAY&&attUnits.length>=3&&Math.random()<.3){
     const target=units.find(u=>u.team==='player'&&u.hp>0)||tc;
-    attUnits.forEach(u=>{u.tEn=target;u.state='chase';if(target.hp)u.tx=target.x;else u.tx=tc.x+50;u.ty=tc.y+50;});
+    const tcx=tc.x+tc.w/2, tcy=tc.y+tc.h/2;
+    attUnits.forEach(u=>{u.tEn=target;u.state='chase';
+      u.tx=(target===tc)?tcx:(target.x||(tcx));
+      u.ty=(target===tc)?tcy:(target.y||(tcy));});
     showStatus('⚔️ 敵軍來襲！');}
 }
 let last=performance.now();
 function update(dt){
+  if(isGameOver)return;
   for(let i=units.length-1;i>=0;i--){if(units[i].hp<=0){units.splice(i,1);upPop();}}
   for(const v of units){if(v.state==='building'&&v.tBldg&&v.tBldg.complete){v.state='idle';v.tBldg=null;}}
   units.forEach(v=>{updateVil(v,dt);updateCombat(v,dt);});
   gameTime+=dt;updateTowers(dt);enemyAI(dt);
+  if(tc.hp<=0)endGame(false);
+  if(etc.hp<=0)endGame(true);
   for(let i=fx.length-1;i>=0;i--){const p=fx[i];p.x+=p.vx*dt;p.y+=p.vy*dt;
     p.vx*=.82;p.vy*=.82;p.life-=dt*2.5;if(p.life<=0)fx.splice(i,1);}
   if(statusTimer>0){statusTimer-=dt;if(statusTimer<=0)statusEl.style.opacity=0;}
@@ -658,6 +698,12 @@ function drawTC(t){
   ctx.fillStyle='#fff';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText(en?'敵堡':'主堡',x+w/2,y-6);
   const sel=en?0:(selectedBldg&&selectedBldg.type==='tc');
   if(sel){ctx.strokeStyle='#ffd250';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.strokeRect(x-5,y-5,w+10,h+10);ctx.setLineDash([]);}
+  // HP 條
+  const ratio=t.hp/t.mh;const bw=w-8;
+  ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x+3,y-18,bw+2,7);
+  ctx.fillStyle=ratio>.5?'#4a4':ratio>.25?'#da4':'#e33';ctx.fillRect(x+4,y-17,bw*ratio,5);
+  ctx.fillStyle='#fff';ctx.font='9px sans-serif';ctx.textAlign='center';
+  ctx.fillText(Math.ceil(t.hp)+'/'+t.mh,x+w/2,y-12);
 }
 function drawBldg(b){
   const{x,y,w,h,type,complete,p,bt}=b;
