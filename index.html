@@ -151,30 +151,6 @@ const techs={
   heal:{name:'急救術',cost:{food:40,stone:20},done:false,rt:0,rtime:12},
 };
 let researchQueue=null; // currently researching tech key
-// ---- 戰爭迷霧 ----
-const FC=40; // fog cell size px
-const FW=Math.ceil(WORLD.w/FC), FH=Math.ceil(WORLD.h/FC);
-const fogSeen=new Uint8Array(FW*FH);  // 0=never seen
-const fogVis=new Uint8Array(FW*FH);   // 1=currently visible
-function fogIdx(gx,gy){return gy*FW+gx;}
-function updateFog(){
-  fogVis.fill(0);
-  const reveal=(wx,wy,r)=>{
-    const r2=r*r;
-    const x0=Math.max(0,Math.floor((wx-r)/FC)),x1=Math.min(FW-1,Math.ceil((wx+r)/FC));
-    const y0=Math.max(0,Math.floor((wy-r)/FC)),y1=Math.min(FH-1,Math.ceil((wy+r)/FC));
-    for(let gx=x0;gx<=x1;gx++)for(let gy=y0;gy<=y1;gy++){
-      const cx=gx*FC+FC/2,cy=gy*FC+FC/2;
-      if((cx-wx)**2+(cy-wy)**2<=r2){const i=fogIdx(gx,gy);fogVis[i]=1;fogSeen[i]=1;}}};
-  for(const u of units){if(u.team!=='player'||u.hp<=0)continue;reveal(u.x,u.y,u.type==='villager'?130:160);}
-  reveal(tc.x+50,tc.y+50,180);
-  for(const b of buildings){if(b.team==='player'&&b.complete)reveal(b.x+b.w/2,b.y+b.h/2,140);}
-}
-function isVisible(wx,wy){
-  const gx=Math.floor(wx/FC),gy=Math.floor(wy/FC);
-  if(gx<0||gy<0||gx>=FW||gy>=FH)return false;
-  return fogVis[fogIdx(gx,gy)]===1;
-}
 // ---- DeepSeek AI ----
 let dsKey='', dsEnabled=false, dsThinking=false, dsDecision=null, dsTimer=0;
 const DS_INTERVAL=12;
@@ -736,8 +712,6 @@ function update(dt){
   const ws=Math.max(0,Math.floor(waveTimer));waveEtaEl.textContent=Math.floor(ws/60)+':'+(ws%60<10?'0':'')+(ws%60);
   // ---- DeepSeek 計時 ----
   if(dsEnabled){dsTimer+=dt;if(dsTimer>DS_INTERVAL){dsTimer=0;callDeepSeek();}}
-  // ---- 霧更新 ----
-  updateFog();
   if(tc.hp<=0)endGame(false);
   if(etc.hp<=0)endGame(true);
   for(let i=fx.length-1;i>=0;i--){const p=fx[i];p.x+=p.vx*dt;p.y+=p.vy*dt;
@@ -997,18 +971,11 @@ function draw(){
   ctx.strokeStyle='rgba(180,40,40,.2)';ctx.lineWidth=1;ctx.setLineDash([4,6]);ctx.beginPath();ctx.arc(etc.x+50,etc.y+50,160,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
   ctx.fillStyle='#8a2020';ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.fillText('⚠️ 敵營',etc.x+50,etc.y-20);
   if(selectedBldg&&selectedBldg.type==='tc'){ctx.fillStyle='rgba(255,255,100,.08)';ctx.beginPath();ctx.arc(tc.x+tc.w/2,tc.y+tc.h/2,80,0,Math.PI*2);ctx.fill();}
-  [...units].filter(u=>u.hp>0&&(u.team==='player'||isVisible(u.x,u.y))).sort((a,b)=>a.y-b.y).forEach(drawUnit);
+  [...units].filter(u=>u.hp>0).sort((a,b)=>a.y-b.y).forEach(drawUnit);
   if(bxSel&&bxR){const x=Math.min(bxR.x1,bxR.x2),y=Math.min(bxR.y1,bxR.y2),w=Math.abs(bxR.x2-bxR.x1),h=Math.abs(bxR.y2-bxR.y1);
     ctx.strokeStyle='rgba(100,255,100,.9)';ctx.lineWidth=1.5/cam.zoom;ctx.fillStyle='rgba(100,255,100,.08)';ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);}
   units.forEach(v=>{if(v.state==='gathering'&&v.tRes){const t=v.tRes;const pu=Math.sin(performance.now()/200)*3;
     ctx.strokeStyle='rgba(255,200,50,.5)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(t.x,t.y,t.r+pu,0,Math.PI*2);ctx.stroke();}});
-  // ---- 戰爭迷霧覆蓋 ----
-  for(let gx=0;gx<FW;gx++)for(let gy=0;gy<FH;gy++){
-    const i=fogIdx(gx,gy);
-    if(fogVis[i])continue;
-    ctx.fillStyle=fogSeen[i]?'rgba(0,0,0,.55)':'rgba(0,0,0,.88)';
-    ctx.fillRect(gx*FC,gy*FC,FC,FC);
-  }
   ctx.restore();drawMinimap();
 }
 function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop);}
