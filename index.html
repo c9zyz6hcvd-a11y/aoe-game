@@ -7,9 +7,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>RTS</title>
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#1a1a1a;font-family:sans-serif;
-    touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
-  #c{display:block;cursor:crosshair;touch-action:none;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#1a1a1a;font-family:sans-serif;}
+  #c{display:block;cursor:crosshair;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
+  /* modal 按鈕一定要可點 */
+  #keyModal,#keyModal *{pointer-events:auto !important;touch-action:auto !important;user-select:auto;}
   /* ---- 行動裝置 ---- */
   @media(max-width:768px){
     #topbar{height:44px;font-size:15px;gap:18px;}
