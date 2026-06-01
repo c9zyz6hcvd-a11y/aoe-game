@@ -759,7 +759,7 @@ function enemyAI(dt){
       u.patrolX=etc.x;u.patrolY=etc.y;units.push(u);upPop();}}
   const attUnits=eUnits.filter(u=>u.type!=='villager'&&u.hp>0);
   // 波次攻擊由 spawnWave() 處理，此處僅保留隨機騷擾
-  if(gameTime>60&&attUnits.length>=2&&Math.random()<.05){
+  if(gameTime>=180&&attUnits.length>=2&&Math.random()<.04){
     const target=units.find(u=>u.team==='player'&&u.hp>0)||tc;
     const tcx=tc.x+tc.w/2,tcy=tc.y+tc.h/2;
     attUnits.slice(0,2).forEach(u=>{u.tEn=target;u.state='chase';
