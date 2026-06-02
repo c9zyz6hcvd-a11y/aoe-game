@@ -1195,12 +1195,15 @@ function drawTC(t){
     if(en)ctx.filter='hue-rotate(150deg) saturate(2)';
     ctx.drawImage(IMGS.tc,x-8,y-12,w+16,h+12);
     ctx.filter='none';
-    ctx.fillStyle='#fff';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText(en?'敵堡':'主堡',x+w/2,y-16);
+    // HP 條（先畫，在建築上方）
     const ratio=t.hp/t.mh;const bw=w-8;
-    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x+3,y-18,bw+2,7);
-    ctx.fillStyle=ratio>.5?'#4a4':ratio>.25?'#da4':'#e33';ctx.fillRect(x+4,y-17,bw*ratio,5);
+    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x+3,y-22,bw+2,7);
+    ctx.fillStyle=ratio>.5?'#4a4':ratio>.25?'#da4':'#e33';ctx.fillRect(x+4,y-21,bw*ratio,5);
     ctx.fillStyle='#fff';ctx.font='9px sans-serif';ctx.textAlign='center';
-    ctx.fillText(Math.ceil(t.hp)+'/'+t.mh,x+w/2,y-12);
+    ctx.fillText(Math.ceil(t.hp)+'/'+t.mh,x+w/2,y-16);
+    // 標籤（疊在建築上）
+    ctx.fillStyle='rgba(0,0,0,.55)';ctx.beginPath();ctx.roundRect(x+w/2-20,y+h-20,40,16,4);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(en?'敵堡':'主堡',x+w/2,y+h-8);
     ctx.restore();
     return;
   }
