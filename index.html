@@ -67,6 +67,19 @@
   #aiStatus{position:fixed;top:44px;right:120px;background:rgba(0,60,120,.7);color:#80d0ff;
     font-size:11px;padding:3px 10px;border-radius:12px;z-index:5;pointer-events:none;display:none;}
   #techPanel{display:none;}
+  .costG{color:#f4d03f;font-size:10px;}
+  #ageBadge{transition:all .4s;cursor:default;}
+  #ageUpProgress{position:fixed;top:38px;left:50%;transform:translateX(-50%);
+    background:rgba(0,0,0,.7);border-radius:0 0 8px 8px;padding:2px 14px 4px;
+    color:#ffd250;font-size:11px;font-weight:bold;z-index:5;pointer-events:none;
+    white-space:nowrap;display:none;}
+  #statsPanel{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:300;
+    display:none;flex-direction:column;align-items:center;justify-content:center;
+    color:#fff;text-align:center;}
+  #statsPanel table{border-collapse:collapse;margin:12px auto;font-size:14px;}
+  #statsPanel td{padding:4px 18px;border-bottom:1px solid #333;}
+  #statsPanel td:first-child{color:#aaa;text-align:right;}
+  #statsPanel td:last-child{color:#ffd250;font-weight:bold;text-align:left;}
 </style>
 </head>
 <body>
@@ -75,7 +88,9 @@
   <span>🪵<b id="wood">100</b></span>
   <span>🍓<b id="food">80</b></span>
   <span>🪨<b id="stone">0</b></span>
+  <span>💰<b id="gold">0</b></span>
   <span>👥<b id="pop">3</b>/<b id="popCap">5</b></span>
+  <span id="ageBadge" style="background:rgba(60,40,0,.7);padding:1px 8px;border-radius:10px;color:#ffd250;">🌑黑暗時代</span>
   <span id="timer" style="color:#ffd250;"></span>
 </div>
 <div id="wavebar">⚔️ 波次 <span id="waveNum">0</span> &nbsp;<span class="wbg"><span class="wfg" id="waveFg" style="width:0%"></span></span>&nbsp;<span id="waveEta">3:00</span></div>
@@ -101,6 +116,16 @@
   <button id="btnT2" onclick="doResearch('military')" style="display:none">⚔️軍事訓練 <span class="costF">🍓60</span><span class="cost">🪵20</span></button>
   <button id="btnT3" onclick="doResearch('speed')" style="display:none">🏃行軍速度 <span class="costF">🍓50</span></button>
   <button id="btnT4" onclick="doResearch('heal')" style="display:none">🏥急救術 <span class="costF">🍓40</span><span class="costS">🪨20</span></button>
+  <button id="btnMill" onclick="startBuild('mill')" style="display:none">🌾磨坊 <span class="costF">🍓60</span><span class="cost">🪵100</span></button>
+  <button id="btnBlacksmith" onclick="startBuild('blacksmith')" style="display:none">⚒️鍛造廠 <span class="cost">🪵150</span><span style="color:#f4d03f;font-size:10px">💰50</span></button>
+  <button id="btnCastle" onclick="startBuild('castle_bldg')" style="display:none">🏰城堡 <span class="costS">🪨650</span></button>
+  <button id="btnSpear" onclick="trainUnit('spearman')" style="display:none">🗡️矛兵 <span class="costF">🍓35</span><span class="cost">🪵25</span></button>
+  <button id="btnKnight" onclick="trainUnit('knight')" style="display:none">🐴騎士 <span class="costF">🍓60</span><span style="color:#f4d03f;font-size:10px">💰75</span></button>
+  <button id="btnMassArm" onclick="trainUnit('mass_archer')" style="display:none">🏹連弩兵 <span class="costF">🍓50</span><span class="cost">🪵50</span><span style="color:#f4d03f;font-size:10px">💰25</span></button>
+  <button id="btnAgeUp" onclick="advanceAge()" style="display:none">⬆️升級時代 <span id="ageUpCost"></span></button>
+  <button id="btnBS1" onclick="doResearch('iron')" style="display:none">⚔️鐵器鍛造 <span class="cost">🪵100</span><span style="color:#f4d03f;font-size:10px">💰75</span></button>
+  <button id="btnBS2" onclick="doResearch('shield')" style="display:none">🛡️強化盔甲 <span class="cost">🪵75</span><span style="color:#f4d03f;font-size:10px">💰50</span></button>
+  <button id="btnBS3" onclick="doResearch('range')" style="display:none">🏹長弓術 <span class="costF">🍓60</span><span style="color:#f4d03f;font-size:10px">💰50</span></button>
 </div>
 <div id="minimap"><canvas id="mc" width="180" height="135"></canvas></div>
 <div id="mobileBar">
@@ -109,6 +134,15 @@
   <button onclick="escAction()" title="取消">✖️</button>
 </div>
 <div id="grpLabels"></div>
+<div id="ageUpProgress">⬆️ 升級中… <span id="ageUpPct">0%</span></div>
+<div id="statsPanel">
+  <div id="spIcon" style="font-size:56px;margin-bottom:8px;"></div>
+  <div id="spTitle" style="font-size:26px;font-weight:bold;margin-bottom:4px;"></div>
+  <div id="spSub" style="font-size:13px;color:#aaa;margin-bottom:16px;"></div>
+  <table id="spTable"></table>
+  <button onclick="location.reload()" style="margin-top:16px;font-size:16px;padding:12px 32px;
+    background:#ffd250;color:#111;border:none;border-radius:10px;cursor:pointer;font-weight:bold;">再玩一局</button>
+</div>
 <div id="gameover" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);
   z-index:200;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;">
   <div id="goIcon" style="font-size:60px;margin-bottom:12px;"></div>
@@ -128,10 +162,25 @@ addEventListener('resize',resize);resize();
 const WORLD={w:2400,h:1800,T:80};
 const cam={x:WORLD.w/2-640,y:WORLD.h/2-400,zoom:1};
 function sw(sx,sy){return{x:cam.x+sx/cam.zoom,y:cam.y+sy/cam.zoom};}
-let wood=100,food=80,stone=0;
+let wood=100,food=80,stone=0,gold=0;
 // 敵方獨立資源池
-let eWood=0,eFood=0,eStone=0;
+let eWood=0,eFood=0,eStone=0,eGold=0;
+// ---- 時代系統 ----
+const AGES={
+  dark:    {name:'黑暗時代',icon:'🌑',idx:0,next:'feudal',  cost:{food:500},        reqBldg:[],           resTime:30},
+  feudal:  {name:'封建時代',icon:'⚔️', idx:1,next:'castle',  cost:{food:800,gold:200},reqBldg:['mill'],      resTime:45},
+  castle:  {name:'城堡時代',icon:'🏰',idx:2,next:'imperial',cost:{food:1000,gold:800},reqBldg:['blacksmith'],resTime:60},
+  imperial:{name:'帝王時代',icon:'👑',idx:3,next:null,      cost:{},                reqBldg:[],            resTime:0},
+};
+let currentAge='dark',ageUpgrading=false,ageTimer=0;
+const ageBadgeEl=document.getElementById('ageBadge');
+const ageUpProgressEl=document.getElementById('ageUpProgress');
+const ageUpPctEl=document.getElementById('ageUpPct');
+// ---- 統計數據 ----
+const stats={kills:0,losses:0,built:0,wavesCleared:0,
+  gathered:{wood:0,food:0,stone:0,gold:0},startTime:Date.now()};
 const woodEl=document.getElementById('wood'),foodEl=document.getElementById('food'),stoneEl=document.getElementById('stone'),
+  goldEl=document.getElementById('gold'),
   popEl=document.getElementById('pop'),popCapEl=document.getElementById('popCap'),statusEl=document.getElementById('status'),
   timerEl=document.getElementById('timer'),grpLabelsEl=document.getElementById('grpLabels');
 let statusTimer=0;
@@ -144,10 +193,13 @@ let waveNum=0, waveTimer=180, WAVE_INTERVAL=120;
 const waveNumEl=document.getElementById('waveNum'),waveFgEl=document.getElementById('waveFg'),waveEtaEl=document.getElementById('waveEta');
 // ---- 科技 ----
 const techs={
-  lumber:{name:'伐木效率',cost:{wood:50,food:30},done:false,rt:0,rtime:20},
-  military:{name:'軍事訓練',cost:{food:60,wood:20},done:false,rt:0,rtime:20},
-  speed:{name:'行軍速度',cost:{food:50},done:false,rt:0,rtime:15},
-  heal:{name:'急救術',cost:{food:40,stone:20},done:false,rt:0,rtime:12},
+  lumber:  {name:'伐木效率',cost:{wood:50,food:30},          done:false,rt:0,rtime:20,bldgReq:null},
+  military:{name:'軍事訓練',cost:{food:60,wood:20},           done:false,rt:0,rtime:20,bldgReq:null},
+  speed:   {name:'行軍速度',cost:{food:50},                   done:false,rt:0,rtime:15,bldgReq:null},
+  heal:    {name:'急救術',  cost:{food:40,stone:20},          done:false,rt:0,rtime:12,bldgReq:null},
+  iron:    {name:'鐵器鍛造',cost:{wood:100,gold:75},          done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
+  shield:  {name:'強化盔甲',cost:{wood:75,gold:50},           done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
+  range:   {name:'長弓術',  cost:{food:60,gold:50},           done:false,rt:0,rtime:20,bldgReq:'blacksmith'},
 };
 let researchQueue=null; // currently researching tech key
 // ---- DeepSeek AI ----
@@ -197,16 +249,22 @@ async function callDeepSeek(){
 }
 // ---- 建築定義 ----
 const BUILD_DEFS={
-  house:{name:'房屋',w:76,h:66,hp:200,cost:{wood:30},bt:5,pb:5},
-  barracks:{name:'兵營',w:86,h:78,hp:400,cost:{wood:50,food:20},bt:8,pb:0},
-  tower:{name:'箭塔',w:56,h:66,hp:400,cost:{wood:60,stone:40},bt:10,pb:0,atk:8,rng:180,cd:1.5},
-  wall:{name:'城牆',w:40,h:40,hp:500,cost:{wood:10},bt:3,pb:0},
+  house:       {name:'房屋',  w:76, h:66, hp:200,  cost:{wood:30},              bt:5,  pb:5, ageReq:'dark'},
+  mill:        {name:'磨坊',  w:76, h:66, hp:500,  cost:{food:60,wood:100},     bt:8,  pb:0, ageReq:'dark'},
+  barracks:    {name:'兵營',  w:86, h:78, hp:400,  cost:{wood:50,food:20},      bt:8,  pb:0, ageReq:'dark'},
+  tower:       {name:'箭塔',  w:56, h:66, hp:400,  cost:{wood:60,stone:40},     bt:10, pb:0, ageReq:'feudal', atk:8,rng:180,cd:1.5},
+  wall:        {name:'城牆',  w:40, h:40, hp:500,  cost:{wood:10},              bt:3,  pb:0, ageReq:'dark'},
+  blacksmith:  {name:'鍛造廠',w:86, h:78, hp:600,  cost:{wood:150,gold:50},     bt:12, pb:0, ageReq:'feudal'},
+  castle_bldg: {name:'城堡',  w:120,h:110,hp:2400, cost:{stone:650},            bt:30, pb:0, ageReq:'castle', atk:15,rng:200,cd:1.2},
 };
 const UNIT_DEFS={
-  swordsman:{name:'劍兵',sp:120,hp:80,atk:12,rng:28,cd:1,cost:{food:60,wood:10},sz:20},
-  archer:{name:'弓兵',sp:130,hp:50,atk:8,rng:160,cd:1.5,cost:{food:40,wood:40},sz:18},
-  horseman:{name:'騎兵',sp:200,hp:100,atk:10,rng:28,cd:1.2,cost:{food:80,wood:20},sz:26},
-  catapult:{name:'投石車',sp:70,hp:120,atk:50,rng:220,cd:3.5,cost:{food:60,wood:80,stone:30},sz:28,splash:65},
+  swordsman: {name:'劍兵',  sp:120,hp:80, atk:12,rng:28, cd:1,  cost:{food:60,wood:10},          sz:20, ageReq:'dark'},
+  spearman:  {name:'矛兵',  sp:110,hp:45, atk:8, rng:24, cd:1.2,cost:{food:35,wood:25},           sz:18, ageReq:'dark',  bonus:{horseman:3,catapult:2,knight:3}},
+  archer:    {name:'弓兵',  sp:130,hp:50, atk:8, rng:160,cd:1.5,cost:{food:40,wood:40},           sz:18, ageReq:'dark'},
+  horseman:  {name:'騎兵',  sp:200,hp:100,atk:10,rng:28, cd:1.2,cost:{food:80,wood:20},           sz:26, ageReq:'feudal'},
+  knight:    {name:'騎士',  sp:180,hp:130,atk:16,rng:28, cd:1.1,cost:{food:60,gold:75},           sz:26, ageReq:'castle'},
+  mass_archer:{name:'連弩兵',sp:135,hp:60, atk:10,rng:180,cd:1.2,cost:{food:50,wood:50,gold:25},  sz:18, ageReq:'castle'},
+  catapult:  {name:'投石車',sp:70, hp:120,atk:50,rng:220,cd:3.5,cost:{food:60,wood:80,stone:30},  sz:28, ageReq:'feudal', splash:65},
 };
 const buildings=[];let selectedBldg=null;
 function canPlace(x,y,bw,bh){
@@ -223,10 +281,11 @@ function findSpot(cx,cy,bw,bh){
     const x=cx+dx-bw/2,y=cy+dy-bh/2;if(canPlace(x,y,bw,bh))return{x,y};}
   return null;
 }
-function canAfford(c){return(!c.wood||wood>=c.wood)&&(!c.food||food>=c.food)&&(!c.stone||stone>=c.stone);}
-function spend(c){if(c.wood){wood-=c.wood;woodEl.textContent=wood;}if(c.food){food-=c.food;foodEl.textContent=food;}if(c.stone){stone-=c.stone;stoneEl.textContent=stone;}}
+function canAfford(c){return(!c.wood||wood>=c.wood)&&(!c.food||food>=c.food)&&(!c.stone||stone>=c.stone)&&(!c.gold||gold>=c.gold);}
+function spend(c){if(c.wood){wood-=c.wood;woodEl.textContent=wood;}if(c.food){food-=c.food;foodEl.textContent=food;}if(c.stone){stone-=c.stone;stoneEl.textContent=stone;}if(c.gold){gold-=c.gold;goldEl.textContent=gold;}}
 function startBuild(type){
   const def=BUILD_DEFS[type];if(!def)return;
+  if(def.ageReq&&ageIdx(currentAge)<ageIdx(def.ageReq)){showStatus('需要'+AGES[def.ageReq].name);return;}
   const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
   if(!vls.length){showStatus('選取村民');return;}
   if(!canAfford(def.cost)){showStatus('資源不足');return;}
@@ -236,32 +295,66 @@ function startBuild(type){
   const b={x:sp.x,y:sp.y,w:def.w,h:def.h,type,hp:1,maxHp:def.hp||200,name:def.name,
     p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'player',
     atk:def.atk||0,rng:def.rng||0,cd:def.cd||0,at:0};
-  buildings.push(b);
+  buildings.push(b);stats.built++;
   vls.forEach((v,i)=>{const r=Math.floor(i/2),c=i%2;
     v.state='building';v.tRes=null;v.gType=null;v.tEn=null;
     v.tx=sp.x+10+c*30;v.ty=sp.y-15-r*28;v.tBldg=b;v.path=null;});
   playClick();showStatus('建造'+def.name);
 }
+// ---- 時代升級 ----
+function ageIdx(key){return AGES[key].idx;}
+function canAdvanceAge(){
+  if(!currentAge||!AGES[currentAge].next)return false;
+  if(ageUpgrading)return false;
+  const a=AGES[currentAge];
+  if(!canAfford(a.cost))return false;
+  const missing=a.reqBldg.filter(bt=>!buildings.some(b=>b.type===bt&&b.complete&&b.team==='player'));
+  return missing.length===0;
+}
+function advanceAge(){
+  if(!canAdvanceAge()){
+    const a=AGES[currentAge];
+    const missing=a.reqBldg.filter(bt=>!buildings.some(b=>b.type===bt&&b.complete&&b.team==='player'));
+    if(missing.length)showStatus('需要先蓋：'+missing.map(bt=>BUILD_DEFS[bt].name).join('、'));
+    else showStatus('資源不足');return;}
+  spend(AGES[currentAge].cost);ageUpgrading=true;ageTimer=0;
+  ageUpProgressEl.style.display='block';showStatus('⬆️ 升級時代中…');}
+function updateAge(dt){
+  if(!ageUpgrading)return;
+  const rt=AGES[currentAge].resTime;
+  ageTimer+=dt;ageUpPctEl.textContent=Math.floor(ageTimer/rt*100)+'%';
+  if(ageTimer>=rt){
+    ageUpgrading=false;ageTimer=0;ageUpProgressEl.style.display='none';
+    currentAge=AGES[currentAge].next;
+    const a=AGES[currentAge];
+    ageBadgeEl.textContent=a.icon+a.name;
+    showStatus('🎉 進入'+a.name+'！');playDrop();
+    spawnFx(tc.x+tc.w/2,tc.y+tc.h/2,'#ffd250',24);}}
 function trainVillager(){
   if(!canAfford({food:50})){showStatus('食物不足');return;}
   if(units.length>=popCap){showStatus('人口已滿');return;}
   spend({food:50});const c=tcCenter();
   const v=makeUnit(c.x-12+Math.random()*24,c.y+tc.h/2+5,'villager');
   v.tx=c.x;v.ty=c.y+tc.h+60;v.state='moving';units.push(v);upPop();
+  stats.built++;
   playDrop();spawnFx(c.x,c.y+tc.h,'#80ff80',10);showStatus('👤 新村民');}
 function trainUnit(type){
   const def=UNIT_DEFS[type];if(!def)return;
-  if(!selectedBldg||selectedBldg.type!=='barracks'||!selectedBldg.complete){showStatus('選取兵營');return;}
+  if(def.ageReq&&ageIdx(currentAge)<ageIdx(def.ageReq)){showStatus('需要'+AGES[def.ageReq].name);return;}
+  const needBldg=type==='knight'||type==='mass_archer'?'castle_bldg':'barracks';
+  if(!selectedBldg||(selectedBldg.type!=='barracks'&&selectedBldg.type!=='castle_bldg')||!selectedBldg.complete){showStatus('選取兵營或城堡');return;}
   if(!canAfford(def.cost)){showStatus('資源不足');return;}
   if(units.length>=popCap){showStatus('人口已滿');return;}
   spend(def.cost);const b=selectedBldg;
   const u=makeUnit(b.x+b.w/2-10+Math.random()*20,b.y+b.h+16,type);
   u.tx=b.x+b.w/2+(Math.random()-.5)*40;u.ty=b.y+b.h+40+Math.random()*20;
-  u.state='moving';units.push(u);upPop();
+  u.state='moving';units.push(u);upPop();stats.built++;
   playClick();spawnFx(u.x,u.y,'#80c0ff',10);showStatus('⚔️ '+def.name);}
 function doResearch(key){
   const t=techs[key];if(!t||t.done)return;
   if(researchQueue){showStatus('研究中…');return;}
+  if(t.bldgReq&&!buildings.some(b=>b.type===t.bldgReq&&b.complete&&b.team==='player')){
+    showStatus('需要'+BUILD_DEFS[t.bldgReq].name);return;}
   if(!canAfford(t.cost)){showStatus('資源不足');return;}
   spend(t.cost);researchQueue=key;t.rt=0;
   showStatus('🔬 研究：'+t.name);playClick();
@@ -273,12 +366,27 @@ const etc={x:WORLD.w-250,y:WORLD.h/2-40,w:100,h:100,hp:1000,mh:1000,team:'enemy'
 let isGameOver=false;
 function endGame(win){
   if(isGameOver)return; isGameOver=true;
-  const el=document.getElementById('gameover');
-  el.style.display='flex';
-  document.getElementById('goIcon').textContent=win?'🏆':'💀';
-  document.getElementById('goMsg').textContent=win?'你贏了！':'你輸了！';
-  const t=Math.floor(gameTime/60)+'分'+Math.floor(gameTime%60)+'秒';
-  document.getElementById('goSub').textContent=win?`摧毀敵堡，歷時 ${t}`:`主堡淪陷，歷時 ${t}`;
+  const elapsed=Math.floor((Date.now()-stats.startTime)/1000);
+  const mm=Math.floor(elapsed/60),ss=elapsed%60;
+  const timeStr=`${mm}分${ss<10?'0':''}${ss}秒`;
+  const sp=document.getElementById('statsPanel');
+  document.getElementById('spIcon').textContent=win?'🏆':'💀';
+  document.getElementById('spTitle').textContent=win?'你贏了！':'你輸了！';
+  document.getElementById('spSub').textContent=win?`摧毀敵方主堡，歷時 ${timeStr}`:`主堡淪陷，歷時 ${timeStr}`;
+  const rows=[
+    ['時代達成',AGES[currentAge].icon+AGES[currentAge].name],
+    ['歷時',timeStr],
+    ['波次撐過',stats.wavesCleared+' 波'],
+    ['擊殺敵軍',stats.kills+' 人'],
+    ['損失單位',stats.losses+' 人'],
+    ['建設建築',stats.built+' 座'],
+    ['採集木材',stats.gathered.wood],
+    ['採集食物',stats.gathered.food],
+    ['採集石材',stats.gathered.stone],
+    ['採集金礦',stats.gathered.gold],
+  ];
+  document.getElementById('spTable').innerHTML=rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  sp.style.display='flex';
 }
 function tcCenter(t=tc){return{x:t.x+t.w/2,y:t.y+t.h/2};}
 // ---- 地圖物件 ----
@@ -305,6 +413,13 @@ const STONE_R=18;const stones=[];
       if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
       ok=[...trees,...bushes,...stones].every(t=>Math.hypot(t.x-x,t.y-y)>STONE_R*2.5);}
     if(ok)stones.push({x,y,r:STONE_R,res:80,mr:80,type:'stone',st:0});}}})();
+const GOLD_R=18;const goldMines=[];
+(function(){const zs=[[tc.x+250,tc.y-250,180,180],[WORLD.w/2-100,WORLD.h/2+250,180,180],[WORLD.w-400,WORLD.h-400,180,180],[200,WORLD.h/2-100,180,180]];
+  for(const[bx,by,bw,bh]of zs){for(let i=0;i<2+Math.floor(Math.random()*2);i++){let ok=0,x,y,t=0;
+    while(!ok&&t++<30){x=bx+Math.random()*bw;y=by+Math.random()*bh;
+      if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
+      ok=[...trees,...bushes,...stones,...goldMines].every(o=>Math.hypot(o.x-x,o.y-y)>GOLD_R*2.5);}
+    if(ok)goldMines.push({x,y,r:GOLD_R,res:100,mr:100,type:'gold',st:0});}}})();
 // ---- 單位 ----
 const HATS=['#8b5a2b','#5a3a8b','#2b6a5a'];let uid=0;
 function makeUnit(x,y,type,team='player'){
@@ -509,8 +624,9 @@ function issueCmd(wx,wy){
   const ht=trees.find(t=>t.res>0&&Math.hypot(t.x-wx,t.y-wy)<t.r+12);
   const hb=bushes.find(b=>b.res>0&&Math.hypot(b.x-wx,b.y-wy)<b.r+12);
   const hs=stones.find(s=>s.res>0&&Math.hypot(s.x-wx,s.y-wy)<s.r+12);
-  const hRes=ht||hb||hs;
-  if(hRes&&vils.length){const pool=(hRes.type==='wood'?trees:hRes.type==='food'?bushes:stones).filter(r=>r.res>0)
+  const hg=goldMines.find(g=>g.res>0&&Math.hypot(g.x-wx,g.y-wy)<g.r+12);
+  const hRes=ht||hb||hs||hg;
+  if(hRes&&vils.length){const pool=(hRes.type==='wood'?trees:hRes.type==='food'?bushes:hRes.type==='gold'?goldMines:stones).filter(r=>r.res>0)
     .sort((a,b)=>Math.hypot(a.x-wx,a.y-wy)-Math.hypot(b.x-wx,b.y-wy));
     vils.forEach((v,i)=>{const t=pool[i%pool.length];
       v.tRes=t;v.gType=t.type;v.state='moving';v.tBldg=null;v.tEn=null;v.path=null;
@@ -609,14 +725,16 @@ function updateVil(v,dt){
   if(v.type!=='villager')return;
   if(!v.mv&&v.state==='returning'){
     if(v.team==='player'){
-      if(v.gType==='wood'){wood+=v.ca;woodEl.textContent=wood;}
-      else if(v.gType==='food'){food+=v.ca;foodEl.textContent=food;}
-      else if(v.gType==='stone'){stone+=v.ca;stoneEl.textContent=stone;}
-    }else{ // 敵方回資源到敵方池
-      if(v.gType==='wood')eWood+=v.ca;else if(v.gType==='food')eFood+=v.ca;else if(v.gType==='stone')eStone+=v.ca;
+      if(v.gType==='wood'){wood+=v.ca;woodEl.textContent=wood;stats.gathered.wood+=v.ca;}
+      else if(v.gType==='food'){food+=v.ca;foodEl.textContent=food;stats.gathered.food+=v.ca;}
+      else if(v.gType==='stone'){stone+=v.ca;stoneEl.textContent=stone;stats.gathered.stone+=v.ca;}
+      else if(v.gType==='gold'){gold+=v.ca;goldEl.textContent=gold;stats.gathered.gold+=v.ca;}
+    }else{
+      if(v.gType==='wood')eWood+=v.ca;else if(v.gType==='food')eFood+=v.ca;
+      else if(v.gType==='stone')eStone+=v.ca;else if(v.gType==='gold')eGold+=v.ca;
     }
     if(v.ca>0){playDrop();spawnFx(v.x,v.y,'#ffd250',6);}v.ca=0;
-    const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:stones;
+    const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:v.gType==='gold'?goldMines:stones;
     const nxt=(v.tRes&&v.tRes.res>0)?v.tRes:pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
     if(nxt){v.tRes=nxt;const e=edgeOf(nxt,v);v.tx=e.x;v.ty=e.y;v.state='moving';}
     else{v.state='idle';v.tRes=null;}
@@ -632,7 +750,7 @@ function updateVil(v,dt){
   if(v.state==='gathering'&&v.tRes){const t=v.tRes;
     if(t.res<=0){v.cs=0;
       if(v.ca>0){v.state='returning';const c=tcCenter(v.team==='enemy'?etc:tc);v.tx=c.x;v.ty=c.y;}
-      else{const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:stones;
+      else{const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:v.gType==='gold'?goldMines:stones;
         const nxt=pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
         if(nxt){v.tRes=nxt;const e=edgeOf(nxt,v);v.tx=e.x;v.ty=e.y;v.state='moving';}
         else{v.state='idle';v.tRes=null;}}}
@@ -674,12 +792,17 @@ function updateCombat(v,dt){
             spawnFx(tx2,ty2,'#ff6020',4);
           }
         }else{
-          e.hp-=v.atk;spawnFx(ex,ey,'#ff4040',5);playHit();
+          const bonusMult=(v.bonus&&e.type&&v.bonus[e.type])||1;
+          const dmg=v.atk*bonusMult;
+          e.hp-=dmg;spawnFx(ex,ey,'#ff4040',5);playHit();
         }
         if(e.hp!==undefined&&e.hp<=0){
           playDeath();spawnFx(ex,ey,'#ff8030',20);
           const isTc=(e===tc||e===etc);
-          if(!isTc)showStatus(e.team==='enemy'?'殲滅敵軍！':'單位陣亡');}}}
+          if(!isTc){
+            if(e.team==='enemy'){stats.kills++;showStatus('殲滅敵軍！');}
+            else{stats.losses++;showStatus('單位陣亡');}
+          }}}
     else{v.state='chase';v.tx=ex;v.ty=ey;}
   }
   if(v.team==='player'&&v.type!=='villager'&&v.state==='idle'){
@@ -720,18 +843,21 @@ function enemyAI(dt){
     v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;units.push(v);}
   for(const v of eVils){
     if(v.state!=='idle')continue;
-    const needWood=eWood<40||!hasHouse||!hasBarracks;const needFood=eFood<60;const needStone=eStone<30;
+    const needWood=eWood<40||!hasHouse||!hasBarracks;const needFood=eFood<60;const needStone=eStone<30;const needGold=eGold<50;
     if(needWood||!hasHouse){const t=trees.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='wood';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
     if(needFood){const t=bushes.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='food';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
     if(needStone){const t=stones.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='stone';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
+    if(needGold){const t=goldMines.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
+      if(t){v.tRes=t;v.gType='gold';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
   }
   for(const v of eVils){
     if(!v.mv&&v.state==='returning'){
-      if(v.gType==='wood')eWood+=Math.floor(v.ca*.5);else if(v.gType==='food')eFood+=Math.floor(v.ca*.5);else if(v.gType==='stone')eStone+=Math.floor(v.ca*.5);
-      v.ca=0;const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:stones;
+      if(v.gType==='wood')eWood+=Math.floor(v.ca*.5);else if(v.gType==='food')eFood+=Math.floor(v.ca*.5);
+      else if(v.gType==='stone')eStone+=Math.floor(v.ca*.5);else if(v.gType==='gold')eGold+=Math.floor(v.ca*.5);
+      v.ca=0;const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:v.gType==='gold'?goldMines:stones;
       const nxt=pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(nxt){v.tRes=nxt;const e=edgeOf(nxt,v);v.tx=e.x;v.ty=e.y;v.state='moving';}
       else v.state='idle';}
@@ -768,21 +894,29 @@ function enemyAI(dt){
 function applyTech(key){
   if(!key)return;
   if(key==='lumber'){for(const u of units){if(u.type==='villager'&&u.team==='player')u.gi=Math.max(.2,u.gi*.8);}}
-  if(key==='military'){for(const u of units){if(u.team==='player'&&u.type!=='villager')u.atk+=3;}}
-  if(key==='speed'){for(const u of units){if(u.team==='player')u.sp=Math.round(u.sp*1.2);}}
+  if(key==='military'){for(const u of units){if(u.team==='player'&&u.type!=='villager'){u.atk+=4;u.mh=Math.round(u.mh*1.15);u.hp=Math.min(u.hp+Math.round(u.mh*.15),u.mh);}}}
+  if(key==='speed'){for(const u of units){if(u.team==='player')u.sp=Math.round(u.sp*1.25);}}
+  if(key==='iron'){for(const u of units){if(u.team==='player'&&u.type!=='villager')u.atk+=5;}showStatus('⚔️ 所有軍隊攻擊+5');}
+  if(key==='shield'){for(const u of units){if(u.team==='player'&&u.type!=='villager'){u.mh=Math.round(u.mh*1.2);u.hp=Math.min(u.hp+Math.round(u.mh*.1),u.mh);}}showStatus('🛡️ 所有軍隊生命+20%');}
+  if(key==='range'){for(const u of units){if(u.team==='player'&&(u.type==='archer'||u.type==='mass_archer')){u.rng=Math.round(u.rng*1.3);u.atk+=3;}}showStatus('🏹 弓兵射程+30% 攻擊+3');}
 }
 function spawnWave(){
-  waveNum++;waveNumEl.textContent=waveNum;
-  const eBldgs=buildings.filter(b=>b.team==='enemy');
-  const hasBarracks=eBldgs.some(b=>b.type==='barracks'&&b.complete);
-  const count=Math.min(3+waveNum*2,14);
-  const types=waveNum<=1?['swordsman']:waveNum<=2?['swordsman','archer']:['swordsman','archer','horseman','catapult'];
+  waveNum++;waveNumEl.textContent=waveNum;stats.wavesCleared=waveNum-1;
+  const ai=ageIdx(currentAge);
+  const count=Math.min(3+waveNum*2+ai*2,18);
+  // 敵方波次兵種隨時代升級
+  let types;
+  if(waveNum<=1)types=['swordsman'];
+  else if(waveNum<=2)types=['swordsman','spearman'];
+  else if(ai<1)types=['swordsman','archer','spearman'];
+  else if(ai<2)types=['swordsman','archer','horseman','catapult'];
+  else types=['swordsman','archer','horseman','catapult','knight'];
   for(let i=0;i<count;i++){
     const type=types[Math.min(i,types.length-1)];
-    const def=UNIT_DEFS[type];
     const u=makeUnit(etc.x+etc.w/2-30+Math.random()*60,etc.y+etc.h+20+Math.random()*20,type,'enemy');
+    // 高波次強化敵兵
+    if(waveNum>3){u.hp=Math.round(u.hp*(1+waveNum*.08));u.mh=u.hp;u.atk=Math.round(u.atk*(1+waveNum*.05));}
     u.patrolX=etc.x;u.patrolY=etc.y;units.push(u);}
-  // 立即命令新兵進攻
   const attUnits=units.filter(u=>u.team==='enemy'&&u.type!=='villager'&&u.hp>0);
   const target=units.find(u=>u.team==='player'&&u.hp>0)||tc;
   const tcx=tc.x+tc.w/2,tcy=tc.y+tc.h/2;
@@ -795,7 +929,7 @@ function update(dt){
   for(let i=units.length-1;i>=0;i--){if(units[i].hp<=0){units.splice(i,1);upPop();}}
   for(const v of units){if(v.state==='building'&&v.tBldg&&v.tBldg.complete){v.state='idle';v.tBldg=null;}}
   units.forEach(v=>{updateVil(v,dt);updateCombat(v,dt);});
-  gameTime+=dt;updateTowers(dt);enemyAI(dt);
+  gameTime+=dt;updateTowers(dt);enemyAI(dt);updateAge(dt);
   // ---- 治療 ----
   for(const u of units){
     if(u.team==='player'&&u.hp>0&&u.hp<u.mh){
@@ -827,39 +961,58 @@ function rdMenu(){
   const show=(id,cond)=>{const e=document.getElementById(id);e.style.display=cond?'':'none';return e;};
   const en=(id,cond)=>{const e=document.getElementById(id);e.disabled=!cond;};
   gm.style.display='flex';
+  const hideAll=()=>['btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3'].forEach(id=>show(id,0));
+  const ai=ageIdx(currentAge);
   const vs=sel.filter(u=>u.type==='villager'&&u.team==='player');
   if(vs.length>0){
-    show('bmenuLabel',0).textContent='';
-    en('btnHouse',canAfford({wood:30}));show('btnHouse',1);
-    en('btnBarracks',canAfford({wood:50,food:20}));show('btnBarracks',1);
-    en('btnTower',canAfford({wood:60,stone:40}));show('btnTower',1);
-    en('btnWall',canAfford({wood:10}));show('btnWall',1);
-    show('btnTrainVil',0);show('btnSword',0);show('btnArch',0);show('btnHorse',0);show('btnCata',0);show('btnT1',0);show('btnT2',0);show('btnT3',0);show('btnT4',0);
+    hideAll();show('bmenuLabel',0);
+    en('btnHouse',canAfford(BUILD_DEFS.house.cost));show('btnHouse',1);
+    en('btnMill',canAfford(BUILD_DEFS.mill.cost));show('btnMill',1);
+    en('btnBarracks',canAfford(BUILD_DEFS.barracks.cost));show('btnBarracks',1);
+    if(ai>=1){en('btnTower',canAfford(BUILD_DEFS.tower.cost));show('btnTower',1);}
+    en('btnWall',canAfford(BUILD_DEFS.wall.cost));show('btnWall',1);
+    if(ai>=1){en('btnBlacksmith',canAfford(BUILD_DEFS.blacksmith.cost));show('btnBlacksmith',1);}
+    if(ai>=2){en('btnCastle',canAfford(BUILD_DEFS.castle_bldg.cost));show('btnCastle',1);}
   }else if(selectedBldg&&selectedBldg.type==='tc'){
-    show('bmenuLabel',1).textContent='🏰主堡';
+    hideAll();show('bmenuLabel',1).textContent='🏰主堡';
     en('btnTrainVil',food>=50&&units.length<popCap);show('btnTrainVil',1);
-    // 科技按鈕
     const rq=researchQueue;
     en('btnT1',!techs.lumber.done&&!rq&&canAfford(techs.lumber.cost));show('btnT1',!techs.lumber.done);
     en('btnT2',!techs.military.done&&!rq&&canAfford(techs.military.cost));show('btnT2',!techs.military.done);
     en('btnT3',!techs.speed.done&&!rq&&canAfford(techs.speed.cost));show('btnT3',!techs.speed.done);
     en('btnT4',!techs.heal.done&&!rq&&canAfford(techs.heal.cost));show('btnT4',!techs.heal.done);
     if(rq){const t=techs[rq];show('bmenuLabel',1).textContent=`🔬${t.name} ${Math.floor(t.rt/t.rtime*100)}%`;}
-    show('btnHouse',0);show('btnBarracks',0);show('btnTower',0);show('btnWall',0);
-    show('btnSword',0);show('btnArch',0);show('btnHorse',0);show('btnCata',0);
-  }else if(selectedBldg&&selectedBldg.type==='barracks'&&selectedBldg.complete&&selectedBldg.team==='player'){
-    show('bmenuLabel',1).textContent='⚔️兵營';
-    en('btnSword',canAfford({food:60,wood:10})&&units.length<popCap);show('btnSword',1);
-    en('btnArch',canAfford({food:40,wood:40})&&units.length<popCap);show('btnArch',1);
-    en('btnHorse',canAfford({food:80,wood:20})&&units.length<popCap);show('btnHorse',1);
-    en('btnCata',canAfford({food:60,wood:80,stone:30})&&units.length<popCap);show('btnCata',1);
-    show('btnHouse',0);show('btnBarracks',0);show('btnTower',0);show('btnWall',0);show('btnTrainVil',0);show('btnT1',0);show('btnT2',0);show('btnT3',0);show('btnT4',0);
+    // 時代升級按鈕
+    const nextAge=AGES[currentAge]?.next;
+    if(nextAge&&!ageUpgrading){
+      const nc=AGES[currentAge].cost;
+      const costStr=Object.entries(nc).map(([k,v])=>(k==='gold'?`💰${v}`:k==='food'?`🍓${v}`:k==='wood'?`🪵${v}`:`🪨${v}`)).join(' ');
+      document.getElementById('ageUpCost').textContent=costStr;
+      en('btnAgeUp',canAdvanceAge());show('btnAgeUp',1);
+    }else if(ageUpgrading){
+      show('bmenuLabel',1).textContent=`⬆️ 升級中 ${ageUpPctEl.textContent}`;
+    }
+  }else if(selectedBldg&&(selectedBldg.type==='barracks'||selectedBldg.type==='castle_bldg')&&selectedBldg.complete&&selectedBldg.team==='player'){
+    hideAll();const isCastle=selectedBldg.type==='castle_bldg';
+    show('bmenuLabel',1).textContent=isCastle?'🏰城堡':'⚔️兵營';
+    en('btnSword',canAfford(UNIT_DEFS.swordsman.cost)&&units.length<popCap);show('btnSword',1);
+    en('btnSpear',canAfford(UNIT_DEFS.spearman.cost)&&units.length<popCap);show('btnSpear',1);
+    en('btnArch',canAfford(UNIT_DEFS.archer.cost)&&units.length<popCap);show('btnArch',1);
+    if(ai>=1){en('btnHorse',canAfford(UNIT_DEFS.horseman.cost)&&units.length<popCap);show('btnHorse',1);}
+    if(ai>=1){en('btnCata',canAfford(UNIT_DEFS.catapult.cost)&&units.length<popCap);show('btnCata',1);}
+    if(ai>=2){en('btnKnight',canAfford(UNIT_DEFS.knight.cost)&&units.length<popCap);show('btnKnight',1);}
+    if(ai>=2){en('btnMassArm',canAfford(UNIT_DEFS.mass_archer.cost)&&units.length<popCap);show('btnMassArm',1);}
+  }else if(selectedBldg&&selectedBldg.type==='blacksmith'&&selectedBldg.complete&&selectedBldg.team==='player'){
+    hideAll();show('bmenuLabel',1).textContent='⚒️鍛造廠';
+    const rq=researchQueue;
+    en('btnBS1',!techs.iron.done&&!rq&&canAfford(techs.iron.cost));show('btnBS1',!techs.iron.done);
+    en('btnBS2',!techs.shield.done&&!rq&&canAfford(techs.shield.cost));show('btnBS2',!techs.shield.done);
+    en('btnBS3',!techs.range.done&&!rq&&canAfford(techs.range.cost));show('btnBS3',!techs.range.done);
+    if(rq){const t=techs[rq];show('bmenuLabel',1).textContent=`🔬${t.name} ${Math.floor(t.rt/t.rtime*100)}%`;}
   }else if(selectedBldg&&selectedBldg.complete){
-    const ic=selectedBldg.type==='house'?'🏠':'⚔️';
-    const inf=selectedBldg.type==='house'?` +${selectedBldg.pb}人口`:'';
-    show('bmenuLabel',1).textContent=ic+selectedBldg.name+inf;
-    show('btnHouse',0);show('btnBarracks',0);show('btnTower',0);show('btnWall',0);
-    show('btnTrainVil',0);show('btnSword',0);show('btnArch',0);show('btnHorse',0);show('btnCata',0);show('btnT1',0);show('btnT2',0);show('btnT3',0);show('btnT4',0);
+    hideAll();
+    const icons={house:'🏠',mill:'🌾',tower:'🏗️',wall:'🧱',barracks:'⚔️',blacksmith:'⚒️',castle_bldg:'🏰'};
+    show('bmenuLabel',1).textContent=(icons[selectedBldg.type]||'🏛️')+selectedBldg.name+(selectedBldg.type==='house'?` +${selectedBldg.pb}人口`:'');
   }else{gm.style.display='none';}
 }
 function upIdle(){const idl=units.find(u=>u.team==='player'&&u.type==='villager'&&u.state==='idle'&&!u.sel);
@@ -1103,6 +1256,20 @@ function drawStone(s){if(s.res<=0){ctx.fillStyle='#666';ctx.beginPath();ctx.elli
   ctx.fillStyle='#777';ctx.beginPath();ctx.ellipse(sx-rr*.3,s.y-rr*.3,rr*.4,rr*.5,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='#999';ctx.beginPath();ctx.ellipse(sx+rr*.2,s.y+rr*.1,rr*.3,rr*.4,0,0,Math.PI*2);ctx.fill();
   if(r<.6){ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(s.x-12,s.y-s.r-10,24,4);ctx.fillStyle='#888';ctx.fillRect(s.x-12,s.y-s.r-10,24*r,4);}}
+function drawGold(g){
+  if(g.res<=0){ctx.fillStyle='#8a7020';ctx.beginPath();ctx.ellipse(g.x,g.y,6,4,0,0,Math.PI*2);ctx.fill();return;}
+  const r=g.res/g.mr,rr=g.r*(.5+.5*r);const sh=g.st>0?(Math.random()-.5)*3*(g.st/.15):0;const gx=g.x+sh;
+  // 金塊多邊形
+  for(const[ox,oy,ow,oh,col]of[
+    [0,0,rr*1.3,rr*.7,'#c8a020'],[rr*.3,-rr*.3,rr*.9,rr*.5,'#e8c030'],
+    [-rr*.4,rr*.1,rr*.8,rr*.45,'#d4a828'],[-rr*.1,-rr*.4,rr*.7,rr*.4,'#f0d040']]){
+    ctx.fillStyle=col;ctx.beginPath();ctx.ellipse(gx+ox,g.y+oy,ow,oh,0,0,Math.PI*2);ctx.fill();}
+  // 高光
+  ctx.fillStyle='rgba(255,255,180,.5)';ctx.beginPath();ctx.ellipse(gx-rr*.2,g.y-rr*.3,rr*.25,rr*.15,-.4,0,Math.PI*2);ctx.fill();
+  // 閃光效果
+  const glint=Math.sin(performance.now()/400+g.x)*.5+.5;
+  ctx.fillStyle=`rgba(255,255,100,${glint*.35})`;ctx.beginPath();ctx.ellipse(gx,g.y,rr*1.4,rr*.75,0,0,Math.PI*2);ctx.fill();
+  if(r<.6){ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(g.x-12,g.y-g.r-10,24,4);ctx.fillStyle='#e8c030';ctx.fillRect(g.x-12,g.y-g.r-10,24*r,4);}}
 function drawTC(t){
   const{x,y,w,h}=t,en=t.team==='enemy';
   ctx.fillStyle=en?'#6a4040':'#7a6040';ctx.fillRect(x-4,y-4,w+8,h+8);
@@ -1170,6 +1337,49 @@ function drawBldg(b){
     ctx.strokeStyle='rgba(0,0,0,.15)';ctx.lineWidth=1;for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(x+1,y+h*i/4);ctx.lineTo(x+w-1,y+h*i/4);ctx.stroke();}
     ctx.fillStyle=en?'#555':'#7a6a4a';ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+w/2,y-6);ctx.lineTo(x+w,y);ctx.closePath();ctx.fill();
     ctx.fillStyle='#fff';ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.fillText('🧱',x+w/2,y+h/2+3);
+  }else if(type==='mill'){
+    ctx.fillStyle='rgba(0,0,0,.15)';ctx.beginPath();ctx.ellipse(x+w/2,y+h,w/2+4,5,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=en?'#7a6a3a':'#c8b870';ctx.fillRect(x,y,w,h);ctx.strokeStyle='#8a7030';ctx.lineWidth=1.5;ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle=en?'#5a4a20':'#9a8040';ctx.beginPath();ctx.moveTo(x-4,y);ctx.lineTo(x+w/2,y-24);ctx.lineTo(x+w+4,y);ctx.closePath();ctx.fill();
+    // 風車葉片
+    const ang=performance.now()/600;
+    ctx.save();ctx.translate(x+w/2,y-10);
+    for(let i=0;i<4;i++){ctx.save();ctx.rotate(ang+i*Math.PI/2);
+      ctx.fillStyle='#d4c060';ctx.fillRect(-3,-18,6,16);ctx.restore();}
+    ctx.fillStyle='#8a6030';ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();ctx.restore();
+    ctx.fillStyle='#fff';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText('🌾',x+w/2,y-2);
+  }else if(type==='blacksmith'){
+    ctx.fillStyle='rgba(0,0,0,.15)';ctx.beginPath();ctx.ellipse(x+w/2,y+h,w/2+4,5,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=en?'#555':'#777';ctx.fillRect(x,y,w,h);ctx.fillStyle=en?'#444':'#555';ctx.fillRect(x,y,w,12);
+    ctx.strokeStyle='#333';ctx.lineWidth=1.5;ctx.strokeRect(x,y,w,h);
+    // 煙囪
+    ctx.fillStyle='#444';ctx.fillRect(x+w-18,y-18,12,18);ctx.fillStyle='#333';ctx.fillRect(x+w-20,y-20,16,6);
+    // 煙霧
+    const st=performance.now()/800;for(let i=0;i<3;i++){const a=(i+st)%1;
+      ctx.fillStyle=`rgba(180,180,180,${.4*(1-a)})`;ctx.beginPath();ctx.arc(x+w-12,(y-20)-a*20,3+a*4,0,Math.PI*2);ctx.fill();}
+    // 火爐光
+    ctx.fillStyle='rgba(255,140,0,.3)';ctx.beginPath();ctx.arc(x+w/2,y+h/2,14,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff8020';ctx.beginPath();ctx.arc(x+w/2,y+h/2,7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText('⚒️',x+w/2,y-2);
+  }else if(type==='castle_bldg'){
+    ctx.fillStyle='rgba(0,0,0,.2)';ctx.beginPath();ctx.ellipse(x+w/2,y+h+2,w/2+6,7,0,0,Math.PI*2);ctx.fill();
+    // 城堡主體
+    ctx.fillStyle=en?'#666':'#aaa';ctx.fillRect(x,y,w,h);
+    // 4 個角塔
+    const towerSz=22;
+    for(const[tx2,ty2]of[[x,y],[x+w-towerSz,y],[x,y+h-towerSz],[x+w-towerSz,y+h-towerSz]]){
+      ctx.fillStyle=en?'#777':'#bbb';ctx.fillRect(tx2,ty2,towerSz,towerSz);
+      ctx.strokeStyle=en?'#555':'#888';ctx.lineWidth=1;ctx.strokeRect(tx2,ty2,towerSz,towerSz);
+      // 雉堞
+      for(let ci=0;ci<3;ci++){ctx.fillStyle=en?'#666':'#aaa';ctx.fillRect(tx2+ci*7,ty2-5,5,5);}
+    }
+    // 城門
+    ctx.fillStyle='#3a2010';ctx.beginPath();ctx.roundRect(x+w/2-10,y+h-28,20,28,3);ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(x+4,y,w-8,8);ctx.fillRect(x+4,y+h-32,w-8,8);
+    // 旗幟
+    ctx.strokeStyle='#888';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x+w/2,y-2);ctx.lineTo(x+w/2,y-24);ctx.stroke();
+    ctx.fillStyle=en?'#c03030':'#3060c0';ctx.beginPath();ctx.moveTo(x+w/2,y-24);ctx.lineTo(x+w/2+16,y-18);ctx.lineTo(x+w/2,y-12);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText('🏰',x+w/2,y-6);
   }
   ctx.restore();
 }
@@ -1179,6 +1389,7 @@ function drawMinimap(){
   for(const t of trees)if(t.res>0){mctx.fillStyle='#1a3a1a';mctx.fillRect(t.x*mw/WORLD.w-1,t.y*mh/WORLD.h-1,3,3);}
   for(const b of bushes)if(b.res>0){mctx.fillStyle='#a03030';mctx.fillRect(b.x*mw/WORLD.w-1,b.y*mh/WORLD.h-1,3,3);}
   for(const s of stones)if(s.res>0){mctx.fillStyle='#888';mctx.fillRect(s.x*mw/WORLD.w-2,s.y*mh/WORLD.h-2,4,4);}
+  for(const g of goldMines)if(g.res>0){mctx.fillStyle='#e8c030';mctx.fillRect(g.x*mw/WORLD.w-2,g.y*mh/WORLD.h-2,4,4);}
   mctx.fillStyle='#c8b080';mctx.fillRect(tc.x*mw/WORLD.w,tc.y*mh/WORLD.h,tc.w*mw/WORLD.w,tc.h*mh/WORLD.h);
   mctx.fillStyle='#8a4040';mctx.fillRect(etc.x*mw/WORLD.w,etc.y*mh/WORLD.h,etc.w*mw/WORLD.w,etc.h*mh/WORLD.h);
   for(const b of buildings){if(!b.complete)continue;
@@ -1210,7 +1421,7 @@ function draw(){
   // 邊界
   ctx.strokeStyle='rgba(0,0,0,.5)';ctx.lineWidth=8;ctx.strokeRect(0,0,WORLD.w,WORLD.h);
   for(const p of fx){ctx.fillStyle=`${p.c}${Math.floor(p.life*255).toString(16).padStart(2,'0')}`;ctx.beginPath();ctx.arc(p.x,p.y,(p.sz||3)*p.life,0,Math.PI*2);ctx.fill();}
-  trees.forEach(drawTree);bushes.forEach(drawBush);stones.forEach(drawStone);
+  trees.forEach(drawTree);bushes.forEach(drawBush);stones.forEach(drawStone);goldMines.forEach(drawGold);
   buildings.forEach(drawBldg);drawTC(tc);drawTC(etc);
   ctx.fillStyle='rgba(80,20,20,.15)';ctx.beginPath();ctx.arc(etc.x+50,etc.y+50,160,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle='rgba(180,40,40,.2)';ctx.lineWidth=1;ctx.setLineDash([4,6]);ctx.beginPath();ctx.arc(etc.x+50,etc.y+50,160,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
