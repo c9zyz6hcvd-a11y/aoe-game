@@ -802,7 +802,7 @@ function updateCombat(v,dt){
           if(!isTc){
             if(e.team==='enemy'){stats.kills++;showStatus('殲滅敵軍！');}
             else{stats.losses++;showStatus('單位陣亡');}
-          }}}
+          }}}}
     else{v.state='chase';v.tx=ex;v.ty=ey;}
   }
   if(v.team==='player'&&v.type!=='villager'&&v.state==='idle'){
