@@ -1346,7 +1346,7 @@ function makeCatapult(en){
 // ---- KayKit 真模型 ----
 const CHAR_SRC={villager:'assets/Barbarian.glb',swordsman:'assets/Knight.glb',archer:'assets/Rogue_Hooded.glb',
   spearman:'assets/Knight.glb',mass_archer:'assets/Rogue_Hooded.glb'};
-const charLib={};
+const charLib={};let horseLib=null;
 const gltfLoader=new GLTFLoader();
 const loadGLB=url=>new Promise((res,rej)=>gltfLoader.load(url,res,undefined,rej));
 function pickClip(clips,res){for(const re of res){const c=clips.find(c=>re.test(c.name));if(c)return c;}return null;}
@@ -1358,7 +1358,15 @@ function pickClip(clips,res){for(const re of res){const c=clips.find(c=>re.test(
     const g2=gs[f];
     const bb=new THREE.Box3().setFromObject(g2.scene);
     charLib[k]={scene:g2.scene,clips:g2.animations,scale:2.35/(bb.max.y-bb.min.y)};}
-  for(const u of units){if(u.mesh){scene.remove(u.mesh);u.mesh=null;u.mixer=null;u.actions=null;u.cur=null;}}
+  // three.js 寫實馬（morph 動畫，沿 Z 軸，要置中+落地）
+  const hg=await loadGLB('assets/Horse.glb');
+  const hb=new THREE.Box3().setFromObject(hg.scene);
+  const hs=2.7/(hb.max.y-hb.min.y);
+  const hc=hb.getCenter(new THREE.Vector3());
+  horseLib={scene:hg.scene,clips:hg.animations,scale:hs,
+    off:{x:-hc.x*hs,y:-hb.min.y*hs,z:-hc.z*hs}};
+  for(const u of units){if(u.mesh){scene.remove(u.mesh);u.mesh=null;u.mixer=null;u.actions=null;u.cur=null;
+    u.mixH=null;u.mixR=null;u.rActs=null;u.rCur=null;}}
 }catch(e){console.warn('GLB 載入失敗，用程序化模型',e);}})();
 function mkAct(mixer,clips,res){const c=pickClip(clips,res);return c?mixer.clipAction(c):null;}
 // 兵種 tint（同一個模型分到唔同兵種用）
@@ -1400,7 +1408,62 @@ function makeGLBUnit(u){
   g.userData.ring=ringSel(u.type==='swordsman'?1.5:1.4);g.add(g.userData.ring);
   return g;
 }
+// 真馬+真騎士（horseman / knight）
+function makeMountedGLB(u){
+  const en=u.team==='enemy';const isKnight=u.type==='knight';
+  const g=new THREE.Group();const body=new THREE.Group();g.add(body);g.userData.body=body;
+  // 馬
+  const h=SkeletonUtils.clone(horseLib.scene);
+  h.scale.setScalar(horseLib.scale);
+  h.position.set(horseLib.off.x,horseLib.off.y,horseLib.off.z);
+  h.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
+    m.material=m.material.clone();
+    if(en&&m.material.color)m.material.color.lerp(new THREE.Color(0xc03030),.3);
+    else if(isKnight&&m.material.color)m.material.color.lerp(new THREE.Color(0x3a2a1a),.25);}});
+  const hw=new THREE.Group();hw.add(h);body.add(hw);g.userData.horseW=hw;
+  u.mixH=new THREE.AnimationMixer(h);
+  if(horseLib.clips[0]){u.actH=u.mixH.clipAction(horseLib.clips[0]);u.actH.play();u.mixH.timeScale=0;}
+  // 鞍 + 氈
+  const bk=box(.76,.08,.95,isKnight?0xc8a030:(en?0x8a2828:0x28508a));bk.position.set(0,1.37,-.32);body.add(bk);
+  const sd=box(.56,.12,.62,0x4a3a26);sd.position.set(0,1.44,-.32);body.add(sd);
+  // 騎士（KayKit，骨骼擺騎姿）
+  const lib=charLib.swordsman;
+  const r=SkeletonUtils.clone(lib.scene);
+  r.scale.setScalar(lib.scale*.88);
+  r.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
+    if(en||isKnight){m.material=m.material.clone();
+      if(m.material.color)m.material.color.lerp(new THREE.Color(en?0xc03030:0xc8a030),en?.3:.22);}}});
+  r.position.set(0,1.16,-.32);
+  body.add(r);
+  u.mixR=new THREE.AnimationMixer(r);
+  const cl=lib.clips;
+  u.rActs={idle:mkAct(u.mixR,cl,[/^idle$/i,/idle/i]),
+    melee:mkAct(u.mixR,cl,[/melee_attack_chop/i,/melee_attack_slice/i,/melee_attack/i,/attack/i])};
+  if(u.rActs.idle){u.rActs.idle.play();u.rCur='idle';}
+  g.userData.rb={
+    ull:r.getObjectByName('upperlegl'),ulr:r.getObjectByName('upperlegr'),
+    lll:r.getObjectByName('lowerlegl'),llr:r.getObjectByName('lowerlegr'),
+    ftl:r.getObjectByName('footl'),ftr:r.getObjectByName('footr')};
+  // 武器插喺手 slot
+  const slot=r.getObjectByName('handslotr');
+  if(slot){const k=1/(lib.scale*.95);
+    if(isKnight){
+      const blade=new THREE.Mesh(new THREE.BoxGeometry(.07*k,.85*k,.024*k),matM(0xd8dde2));
+      blade.position.y=.5*k;blade.castShadow=true;slot.add(blade);
+      const guard=new THREE.Mesh(new THREE.BoxGeometry(.24*k,.05*k,.06*k),mat(0x8a6a30));
+      guard.position.y=.08*k;slot.add(guard);
+    }else{
+      const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.032*k,.032*k,2.2*k,6),mat(0x8a6a40));
+      shaft.castShadow=true;slot.add(shaft);
+      const tip=new THREE.Mesh(new THREE.ConeGeometry(.06*k,.22*k,6),matM(0xc8ccd2));
+      tip.position.y=1.15*k;slot.add(tip);
+    }}
+  g.userData.mounted=1;
+  g.userData.ring=ringSel(1.9);g.add(g.userData.ring);
+  return g;
+}
 function makeUnitMesh(u){
+  if((u.type==='horseman'||u.type==='knight')&&horseLib&&charLib.swordsman)return makeMountedGLB(u);
   if(charLib[u.type])return makeGLBUnit(u);
   const en=u.team==='enemy';
   const g=new THREE.Group();
@@ -1499,6 +1562,27 @@ function syncScene(dt,now){
     if(u.dir!==undefined){const cur=m.rotation.y;let d=u.dir-cur;
       while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;
       m.rotation.y=cur+d*Math.min(1,dt*12);}
+    if(m.userData.mounted){
+      if(u.mixH){u.mixH.timeScale=u.mv?1.3:0;
+        if(!u.mv&&u.actH)u.actH.time=.04;
+        u.mixH.update(dt);}
+      if(u.mixR){u.mixR.update(dt);
+        const want=u.state==='attack'?'melee':'idle';
+        if(want!==u.rCur&&u.rActs&&u.rActs[want]){
+          const p=u.rActs[u.rCur],n=u.rActs[want];
+          n.enabled=true;n.reset().play();
+          if(p&&p!==n)p.crossFadeTo(n,.15,false);
+          u.rCur=want;}}
+      const rb=m.userData.rb;
+      if(rb&&rb.ull){ // 騎姿：蓋過動畫嘅腳
+        rb.ull.rotation.x=-1.25;rb.ull.rotation.z=.42;
+        rb.ulr.rotation.x=-1.25;rb.ulr.rotation.z=-.42;
+        rb.lll.rotation.x=1.35;rb.llr.rotation.x=1.35;
+        if(rb.ftl){rb.ftl.rotation.x=-.35;rb.ftr.rotation.x=-.35;}}
+      m.userData.body.position.y=u.mv?Math.abs(Math.sin(u.wt))*.05:0;
+      if(m.userData.ring)m.userData.ring.visible=!!u.sel;
+      continue;
+    }
     if(m.userData.glb){
       if(u.mixer)u.mixer.update(dt);
       if(u.actions){
@@ -1630,7 +1714,8 @@ window.__G={units,buildings,trees,bushes,stones,goldMines,sw,camT,issueCmd,selec
     woodEl.textContent=wood;foodEl.textContent=food;stoneEl.textContent=stone;goldEl.textContent=gold;},
   age:()=>currentAge,tc,etc,techs,AGES,
   setAge:a=>{currentAge=a;ageBadgeEl.textContent=AGES[a].icon+AGES[a].name;},
-  setTime:t=>{gameTime=t;}};
+  setTime:t=>{gameTime=t;},
+  charLib,loadGLB,SkeletonUtils,scene};
 // ---- 主迴圈 ----
 let last=performance.now();
 function loop(){
