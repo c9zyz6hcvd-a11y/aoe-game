@@ -86,6 +86,7 @@ const WORLD={w:2400,h:1800,T:80};
 const S=10; // 邏輯座標(2D px) → 3D 單位 縮放
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x9cc4e4);
 scene.fog=new THREE.Fog(0x9cc4e4,300,560);
@@ -101,13 +102,18 @@ function updateCamera(){
 }
 updateCamera();
 // ---- 光 ----
-scene.add(new THREE.HemisphereLight(0xcde4f5,0x4a5a35,.85));
-const sun=new THREE.DirectionalLight(0xfff2dd,1.6);
+scene.add(new THREE.HemisphereLight(0xcde4f5,0x4a5a35,1.05));
+const sun=new THREE.DirectionalLight(0xfff2dd,2.2);
 sun.position.set(WORLD.w/S/2+70,150,WORLD.h/S/2-90);
 sun.target.position.set(WORLD.w/S/2,0,WORLD.h/S/2);
-sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.0004;
 const sc=sun.shadow.camera;sc.left=-170;sc.right=170;sc.top=130;sc.bottom=-130;sc.far=500;
 scene.add(sun);scene.add(sun.target);
+// 補光（照陰影面，唔投影）
+const fill=new THREE.DirectionalLight(0xbfd4ff,.55);
+fill.position.set(WORLD.w/S/2-80,90,WORLD.h/S/2+110);
+fill.target.position.set(WORLD.w/S/2,0,WORLD.h/S/2);
+scene.add(fill);scene.add(fill.target);
 // ---- 地面 ----
 function grassTexture(){
   const c=document.createElement('canvas');c.width=c.height=512;const g=c.getContext('2d');
@@ -120,16 +126,17 @@ function grassTexture(){
   const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(7,5);return t;
 }
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(WORLD.w/S+120,WORLD.h/S+120),
-  new THREE.MeshLambertMaterial({map:grassTexture()}));
+  new THREE.MeshStandardMaterial({map:grassTexture(),roughness:1,metalness:0}));
 ground.rotation.x=-Math.PI/2;ground.position.set(WORLD.w/S/2,0,WORLD.h/S/2);
 ground.receiveShadow=true;scene.add(ground);
 // 草叢點綴
-{const g=new THREE.ConeGeometry(.5,1.1,5),m=new THREE.MeshLambertMaterial({color:0x4d7d33});
+{const g=new THREE.ConeGeometry(.5,1.1,5),m=new THREE.MeshStandardMaterial({color:0x4d7d33,roughness:1});
  for(let i=0;i<140;i++){const t=new THREE.Mesh(g,m);
    t.position.set(Math.random()*WORLD.w/S,.4,Math.random()*WORLD.h/S);
    t.rotation.y=Math.random()*7;t.scale.setScalar(.6+Math.random()*.9);scene.add(t);}}
 // ---- 材質小工具 ----
-const M={};function mat(c){if(!M[c])M[c]=new THREE.MeshLambertMaterial({color:c});return M[c];}
+const M={};function mat(c){if(!M[c])M[c]=new THREE.MeshStandardMaterial({color:c,roughness:.85,metalness:0});return M[c];}
+const MM={};function matM(c){if(!MM[c])MM[c]=new THREE.MeshStandardMaterial({color:c,roughness:.35,metalness:.7});return MM[c];}
 function box(w,h,d,c){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c));m.castShadow=true;return m;}
 function cyl(rt,rb,h,c,seg=8){const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),mat(c));m.castShadow=true;return m;}
 function cone(r,h,c,seg=8){const m=new THREE.Mesh(new THREE.ConeGeometry(r,h,seg),mat(c));m.castShadow=true;return m;}
@@ -630,14 +637,25 @@ function upGrpLabels(){
   grpLabelsEl.innerHTML=h;}
 // ================= 3D 建模 =================
 function place(m,wx,wy){m.position.set(wx/S,0,wy/S);}
-// 樹
+// 樹（松樹/闊葉樹兩款，顏色隨機微調）
+function leafMat(base){const c=new THREE.Color(base);
+  c.offsetHSL((Math.random()-.5)*.04,(Math.random()-.5)*.1,(Math.random()-.5)*.06);
+  return new THREE.MeshStandardMaterial({color:c,roughness:.95,metalness:0});}
 function makeTree(){
   const g=new THREE.Group();
-  const trunk=cyl(.35,.5,2.6,0x6b4226,7);trunk.position.y=1.3;g.add(trunk);
   const fol=new THREE.Group();
-  const c1=cone(2.1,3.2,0x2e7d32,8);c1.position.y=3.6;fol.add(c1);
-  const c2=cone(1.6,2.6,0x388e3c,8);c2.position.y=5.2;fol.add(c2);
-  const c3=cone(1.1,2,0x43a047,8);c3.position.y=6.6;fol.add(c3);
+  if(Math.random()<.45){ // 松樹
+    const trunk=cyl(.32,.46,2.6,0x6b4226,8);trunk.position.y=1.3;g.add(trunk);
+    const lm=leafMat(0x35803a);
+    for(const[y,r,h]of[[3.6,2.0,3.0],[5.1,1.5,2.4],[6.4,1.0,1.9]]){
+      const c=new THREE.Mesh(new THREE.ConeGeometry(r,h,9),lm);c.castShadow=true;c.position.y=y;fol.add(c);}
+  }else{ // 闊葉樹
+    const trunk=cyl(.3,.45,2.8,0x7a5230,8);trunk.position.y=1.4;trunk.rotation.z=(Math.random()-.5)*.12;g.add(trunk);
+    const lm=leafMat(0x4d8f3a);
+    for(const[dx,dy,dz,r]of[[0,4.4,0,1.7],[1.1,3.8,.3,1.2],[-1,3.9,-.2,1.15],[.2,3.5,-1,1.0],[-.3,5.3,.4,1.05]]){
+      const b=new THREE.Mesh(new THREE.SphereGeometry(r,10,8),lm);b.castShadow=true;
+      b.position.set(dx,dy,dz);b.scale.y=.85;fol.add(b);}
+  }
   g.add(fol);g.userData.fol=fol;
   const stump=cyl(.45,.55,.7,0x7a5230,7);stump.position.y=.35;stump.visible=false;g.add(stump);
   g.userData.stump=stump;
@@ -704,67 +722,139 @@ function makeBuildingMesh(b){
   g.traverse(m=>{if(m.isMesh)m.castShadow=true;});
   return g;
 }
-// 單位建模
+// ================= 角色建模（有關節人形） =================
 const TEAM={player:0x3070d0,enemy:0xc03030};
-function makeUnitMesh(u){
-  const g=new THREE.Group();const en=u.team==='enemy';
-  const body=new THREE.Group();g.add(body);g.userData.body=body;
-  const armR=new THREE.Group();
-  if(u.type==='villager'){
-    const tunic=cyl(.5,.62,1.15,en?0x8a5050:0xc8a070,8);tunic.position.y=.95;body.add(tunic);
-    const head=ball(.4,0xe8b88a,8);head.position.y=1.85;body.add(head);
-    const hat=cone(.45,.5,u.hat,7);hat.position.y=2.2;body.add(hat);
-    armR.position.set(.5,1.5,0);
-    const arm=box(.2,.7,.2,0xe8b88a);arm.position.y=-.3;armR.add(arm);
-    const axe=new THREE.Group();
-    const handle=box(.08,.8,.08,0x6b4226);handle.position.y=-.75;axe.add(handle);
-    const blade=box(.36,.3,.1,0xb0b0b0);blade.position.set(.16,-1.05,0);axe.add(blade);
-    armR.add(axe);body.add(armR);
-    const carry=box(.55,.4,.9,0xc8a030);carry.position.set(-.55,1.2,0);carry.visible=false;body.add(carry);
-    g.userData.carry=carry;
-    g.userData.ring=ringSel(1.4);g.add(g.userData.ring);
-  }else if(u.type==='swordsman'){
-    const tunic=cyl(.55,.68,1.25,TEAM[u.team],8);tunic.position.y=1;body.add(tunic);
-    const head=ball(.4,0xe8b88a,8);head.position.y=1.95;body.add(head);
-    const helm=cyl(.44,.46,.4,0x999999,8);helm.position.y=2.2;body.add(helm);
-    const shield=cyl(.5,.5,.12,en?0x6a2020:0x204090,8);
-    shield.rotation.z=Math.PI/2;shield.position.set(-.65,1.2,0);body.add(shield);
-    armR.position.set(.6,1.6,0);
-    const arm=box(.22,.7,.22,0xe8b88a);arm.position.y=-.3;armR.add(arm);
-    const blade=box(.14,1.3,.14,0xdddddd);blade.position.set(0,-1.1,0);armR.add(blade);
-    const guard=box(.4,.1,.14,0x8a6a30);guard.position.set(0,-.62,0);armR.add(guard);
-    body.add(armR);
-    g.userData.ring=ringSel(1.5);g.add(g.userData.ring);
-  }else if(u.type==='archer'){
-    const tunic=cyl(.48,.6,1.2,en?0x9a5030:0x2e8a4a,8);tunic.position.y=1;body.add(tunic);
-    const head=ball(.38,0xe8b88a,8);head.position.y=1.9;body.add(head);
-    const hood=cone(.42,.55,en?0x7a3a20:0x1e6a36,7);hood.position.y=2.2;body.add(hood);
-    armR.position.set(.55,1.5,0);
-    const bow=new THREE.Mesh(new THREE.TorusGeometry(.7,.05,5,12,Math.PI),mat(0x6b4226));
-    bow.rotation.z=-Math.PI/2;armR.add(bow);
-    const str=box(.02,1.4,.02,0xdddddd);str.position.x=0;armR.add(str);
-    body.add(armR);
-    g.userData.ring=ringSel(1.4);g.add(g.userData.ring);
-  }else if(u.type==='horseman'){
-    const horse=new THREE.Group();
-    const hb=box(2,.9,.85,en?0x5a3a28:0x7a5238);hb.position.y=1.25;horse.add(hb);
-    const neck=box(.5,.9,.5,en?0x5a3a28:0x7a5238);neck.position.set(.95,1.95,0);neck.rotation.z=-.5;horse.add(neck);
-    const hd=box(.6,.35,.4,en?0x4a2f20:0x6a452e);hd.position.set(1.45,2.25,0);horse.add(hd);
-    for(const[lx,lz]of[[.7,.3],[.7,-.3],[-.7,.3],[-.7,-.3]]){
-      const leg=box(.22,.85,.22,en?0x4a2f20:0x6a452e);leg.position.set(lx,.42,lz);horse.add(leg);
-      (horse.userData.legs=horse.userData.legs||[]).push(leg);}
-    const tail=box(.15,.7,.15,0x3a2a1a);tail.position.set(-1.05,1.3,0);tail.rotation.z=.5;horse.add(tail);
-    body.add(horse);g.userData.horse=horse;
-    const rider=cyl(.4,.5,.9,TEAM[u.team],8);rider.position.y=2.1;body.add(rider);
-    const rh=ball(.32,0xe8b88a,8);rh.position.y=2.8;body.add(rh);
-    const rhelm=cyl(.35,.36,.3,0x999999,8);rhelm.position.y=3;body.add(rhelm);
-    armR.position.set(.45,2.3,.45);
-    const spear=box(.08,1.8,.08,0x8a6a40);spear.rotation.x=.4;armR.add(spear);
-    body.add(armR);
-    g.userData.ring=ringSel(1.9);g.add(g.userData.ring);
+function skinToneOf(i){return[0xe8b88a,0xd9a066,0xc98a5a,0xf0c8a2][i%4];}
+function capMesh(r,len,c,metal){const m=new THREE.Mesh(new THREE.CapsuleGeometry(r,len,4,10),metal?matM(c):mat(c));m.castShadow=true;return m;}
+// 人形：肩/髖關節分開 group，行路時擺動
+function buildHuman(cfg){
+  const g=new THREE.Group();const r={};
+  // 腳（髖 pivot）
+  function leg(side){const L=new THREE.Group();L.position.set(.17*side,1.04,0);
+    const up=capMesh(.1,.3,cfg.pants);up.position.y=-.19;L.add(up);
+    const lo=capMesh(.082,.28,cfg.pants);lo.position.y=-.55;L.add(lo);
+    const bt=box(.17,.12,.31,cfg.boots);bt.position.set(0,-.81,.06);L.add(bt);
+    return L;}
+  r.legL=leg(-1);r.legR=leg(1);g.add(r.legL);g.add(r.legR);
+  const pel=box(.4,.24,.26,cfg.pants);pel.position.y=1.07;g.add(pel);
+  // 軀幹（胸闊腰窄）
+  const tor=capMesh(.27,.4,cfg.tunic);tor.position.y=1.45;tor.scale.set(1.12,1,.78);g.add(tor);
+  const blt=box(.5,.09,.32,0x3a2e20);blt.position.y=1.18;g.add(blt);
+  // 手（膊頭 pivot）
+  function arm(side){const A=new THREE.Group();A.position.set(.36*side,1.66,0);
+    const sh=ball(.115,cfg.tunic,10);A.add(sh);
+    const up=capMesh(.078,.24,cfg.tunic);up.position.y=-.17;A.add(up);
+    const fo=capMesh(.068,.22,cfg.skin);fo.position.y=-.45;A.add(fo);
+    const hd2=ball(.082,cfg.skin,8);hd2.position.y=-.6;A.add(hd2);
+    return A;}
+  r.armL=arm(-1);r.armR=arm(1);g.add(r.armL);g.add(r.armR);
+  // 頸+頭（有眼有鼻）
+  const neck=cyl(.085,.1,.14,cfg.skin,8);neck.position.y=1.84;g.add(neck);
+  const head=new THREE.Group();head.position.y=2.05;r.head=head;g.add(head);
+  const skull=ball(.225,cfg.skin,14);skull.scale.set(.94,1.05,.98);head.add(skull);
+  for(const sx of[-1,1]){const eye=ball(.027,0x26211c,6);eye.position.set(.085*sx,.02,.195);head.add(eye);}
+  const nose=ball(.04,cfg.skin,6);nose.position.set(0,-.03,.22);head.add(nose);
+  // 帽/頭盔/兜帽/頭髮
+  if(cfg.hat==='straw'){
+    const brim=cyl(.36,.38,.05,cfg.hatColor,12);brim.position.y=.13;head.add(brim);
+    const top=cone(.23,.2,cfg.hatColor,10);top.position.y=.26;head.add(top);
+  }else if(cfg.hat==='helmet'){
+    const hm=new THREE.Mesh(new THREE.SphereGeometry(.245,12,8,0,Math.PI*2,0,Math.PI*.55),matM(0x8f949c));
+    hm.castShadow=true;hm.position.y=.05;head.add(hm);
+    const rim=cyl(.25,.255,.05,0x6f747c,12);rim.position.y=-.02;head.add(rim);
+    const ng=new THREE.Mesh(new THREE.BoxGeometry(.05,.17,.04),matM(0x8f949c));ng.position.set(0,-.04,.235);head.add(ng);
+  }else if(cfg.hat==='hood'){
+    const hood=cone(.27,.36,cfg.hatColor,10);hood.position.y=.16;hood.rotation.x=-.12;head.add(hood);
+    const cape=cone(.3,.3,cfg.hatColor,10);cape.position.y=-.12;cape.scale.y=.6;head.add(cape);
+  }else{
+    const hair=ball(.23,0x4a3320,12);hair.scale.set(.96,.85,.96);hair.position.y=.06;head.add(hair);
   }
-  g.userData.armR=armR;
+  // 武器（右手）
+  const hy=-.6;
+  if(cfg.weapon==='axe'){
+    const handle=cyl(.028,.028,.62,0x6b4226,6);handle.position.y=hy-.12;r.armR.add(handle);
+    const ax=new THREE.Mesh(new THREE.BoxGeometry(.2,.15,.045),matM(0x9aa0a8));ax.position.set(.1,hy-.36,0);r.armR.add(ax);
+  }else if(cfg.weapon==='sword'){
+    const blade=new THREE.Mesh(new THREE.BoxGeometry(.07,.66,.02),matM(0xd8dde2));blade.position.set(0,hy-.45,0);r.armR.add(blade);
+    const tip=new THREE.Mesh(new THREE.ConeGeometry(.035,.1,4),matM(0xd8dde2));tip.rotation.x=Math.PI;tip.rotation.y=Math.PI/4;tip.position.set(0,hy-.82,0);r.armR.add(tip);
+    const guard=box(.22,.04,.05,0x8a6a30);guard.position.set(0,hy-.1,0);r.armR.add(guard);
+    const pom=ball(.04,0x8a6a30,6);pom.position.set(0,hy+.08,0);r.armR.add(pom);
+  }else if(cfg.weapon==='bow'){
+    const bow=new THREE.Mesh(new THREE.TorusGeometry(.5,.032,6,14,Math.PI),mat(0x6b4226));
+    bow.rotation.z=Math.PI/2;bow.position.set(0,hy,.06);r.armR.add(bow);
+    const str=box(.018,1,.018,0xd8d8c8);str.position.set(0,hy,.06);r.armR.add(str);
+    const quiv=cyl(.07,.07,.5,0x7a5230,7);quiv.position.set(-.18,1.45,-.26);quiv.rotation.z=.3;g.add(quiv);
+  }else if(cfg.weapon==='spear'){
+    const shaft=cyl(.03,.03,1.9,0x8a6a40,6);shaft.position.set(0,hy,0);shaft.rotation.x=1.15;r.armR.add(shaft);
+    const tip=new THREE.Mesh(new THREE.ConeGeometry(.05,.18,6),matM(0xc8ccd2));
+    tip.position.set(0,hy+.35,.88);tip.rotation.x=1.15;r.armR.add(tip);
+  }
+  if(cfg.shield){
+    const sh=cyl(.32,.32,.06,cfg.shieldColor,14);sh.rotation.z=Math.PI/2;sh.rotation.y=Math.PI/2;
+    sh.position.set(-.14,-.4,.08);r.armL.add(sh);
+    const boss=ball(.07,0xb8bec6,8);boss.position.set(-.14,-.4,.16);r.armL.add(boss);
+  }
+  g.userData.rig=r;
   g.traverse(m=>{if(m.isMesh)m.castShadow=true;});
+  return g;
+}
+// 馬（向 +z，四腳會跑）
+function buildHorse(en){
+  const c=en?0x5a3a28:0x7a5238,c2=en?0x4a2f20:0x6a452e;
+  const H=new THREE.Group();const legs=[];
+  const bd=capMesh(.42,1.05,c);bd.rotation.x=Math.PI/2;bd.position.y=1.28;H.add(bd);
+  const chest=ball(.44,c,10);chest.position.set(0,1.32,.6);H.add(chest);
+  const rump=ball(.42,c,10);rump.position.set(0,1.3,-.56);H.add(rump);
+  const neck=capMesh(.19,.55,c);neck.position.set(0,1.78,.92);neck.rotation.x=-.65;H.add(neck);
+  const hed=new THREE.Group();hed.position.set(0,2.12,1.22);H.add(hed);
+  const skl=ball(.17,c2,10);skl.scale.set(.8,.9,1.3);hed.add(skl);
+  const muz=capMesh(.1,.16,c2);muz.rotation.x=Math.PI/2;muz.position.set(0,-.05,.26);hed.add(muz);
+  for(const sx of[-1,1]){const ear=cone(.05,.14,c2,6);ear.position.set(.09*sx,.2,-.04);hed.add(ear);}
+  const mane=box(.08,.6,.5,0x3a2a1a);mane.position.set(0,1.98,.86);mane.rotation.x=-.65;H.add(mane);
+  for(const[lz,lx]of[[.52,.26],[.52,-.26],[-.5,.26],[-.5,-.26]]){
+    const L=new THREE.Group();L.position.set(lx,1.08,lz);
+    const up=capMesh(.09,.3,c);up.position.y=-.2;L.add(up);
+    const lo=capMesh(.065,.33,c2);lo.position.y=-.56;L.add(lo);
+    const hoof=cyl(.075,.085,.1,0x2e2620,8);hoof.position.y=-.78;L.add(hoof);
+    H.add(L);legs.push(L);}
+  const tail=capMesh(.07,.55,0x3a2a1a);tail.position.set(0,1.25,-1);tail.rotation.x=.7;H.add(tail);
+  const saddle=box(.5,.1,.55,en?0x8a2828:0x28508a);saddle.position.y=1.72;H.add(saddle);
+  const blanket=box(.56,.06,.7,en?0x6a1f1f:0x1f3f6e);blanket.position.y=1.66;H.add(blanket);
+  H.userData.legs=legs;
+  H.traverse(m=>{if(m.isMesh)m.castShadow=true;});
+  return H;
+}
+function makeUnitMesh(u){
+  const en=u.team==='enemy';
+  const g=new THREE.Group();
+  const body=new THREE.Group();g.add(body);g.userData.body=body;
+  let human,ringR=1.5;
+  if(u.type==='villager'){
+    human=buildHuman({skin:skinToneOf(u.i),tunic:en?0x9a5a4a:0xb9905e,pants:0x6e5a43,boots:0x4a3826,
+      hat:'straw',hatColor:u.hat,weapon:'axe'});
+    ringR=1.4;
+    const carry=box(.5,.36,.78,0xc8a030);carry.position.set(-.4,1.68,0);carry.rotation.z=.15;
+    carry.visible=false;body.add(carry);g.userData.carry=carry;
+  }else if(u.type==='swordsman'){
+    human=buildHuman({skin:skinToneOf(u.i),tunic:TEAM[u.team],pants:0x4a4a55,boots:0x33302c,
+      hat:'helmet',weapon:'sword',shield:true,shieldColor:en?0x7a2828:0x24508c});
+  }else if(u.type==='archer'){
+    human=buildHuman({skin:skinToneOf(u.i),tunic:en?0x8a5535:0x3a7d4a,pants:0x55483a,boots:0x3a3026,
+      hat:'hood',hatColor:en?0x6e3a22:0x2c5e3a,weapon:'bow'});
+    ringR=1.4;
+  }else{ // horseman：馬 + 騎手
+    const horse=buildHorse(en);body.add(horse);g.userData.horse=horse;g.userData.rider=true;
+    human=buildHuman({skin:skinToneOf(u.i),tunic:TEAM[u.team],pants:0x4a4a55,boots:0x33302c,
+      hat:'helmet',weapon:'spear'});
+    human.scale.setScalar(.92);human.position.y=.72;
+    const rg=human.userData.rig;
+    rg.legL.rotation.x=-1.05;rg.legL.rotation.z=.55;
+    rg.legR.rotation.x=-1.05;rg.legR.rotation.z=-.55;
+    rg.armL.rotation.x=-.5; // 拉韁
+    ringR=1.9;
+  }
+  body.add(human);g.userData.rig=human.userData.rig;
+  g.userData.ring=ringSel(ringR);g.add(g.userData.ring);
   return g;
 }
 // ---- 場景同步 ----
@@ -803,18 +893,34 @@ function syncScene(dt,now){
     if(u.dir!==undefined){const cur=m.rotation.y;let d=u.dir-cur;
       while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;
       m.rotation.y=cur+d*Math.min(1,dt*12);}
-    const body=m.userData.body,armR=m.userData.armR;
-    if(u.mv){body.position.y=Math.abs(Math.sin(u.wt))*.12;
-      if(armR)armR.rotation.x=Math.sin(u.wt)*.5;
-      if(m.userData.horse)m.userData.horse.userData.legs.forEach((l,i)=>l.rotation.x=Math.sin(u.wt*1.6+i*1.5)*.6);}
-    else{body.position.y=0;
+    const body=m.userData.body,rig=m.userData.rig;
+    const busy=(u.type==='villager'&&(u.state==='gathering'||u.state==='building'))||u.state==='attack';
+    if(u.mv){
+      const s=Math.sin(u.wt);
+      body.position.y=Math.abs(s)*(m.userData.horse?.06:.09);
+      body.rotation.x=m.userData.horse?0:.06;
+      if(rig){
+        if(!m.userData.rider){rig.legL.rotation.x=s*.65;rig.legR.rotation.x=-s*.65;}
+        rig.armL.rotation.x=m.userData.rider?-.5:-s*.45;
+        if(!busy)rig.armR.rotation.x=s*.45;
+      }
+      if(m.userData.horse)m.userData.horse.userData.legs.forEach((l,i)=>
+        l.rotation.x=Math.sin(u.wt*1.5+((i===1||i===2)?Math.PI:0)+(i<2?0:.5))*.55);
+    }else{
+      body.position.y=0;body.rotation.x=0;
+      if(rig){
+        if(!m.userData.rider){rig.legL.rotation.x=0;rig.legR.rotation.x=0;}
+        rig.armL.rotation.x=m.userData.rider?-.5:0;
+      }
       if(m.userData.horse)m.userData.horse.userData.legs.forEach(l=>l.rotation.x=0);
-      if(armR){
-        if(u.type==='villager'&&(u.state==='gathering'||u.state==='building')){
-          armR.rotation.x=-2+Math.abs(Math.sin(u.cs*Math.PI))*1.8;}
-        else if(u.state==='attack'){const ph=Math.max(0,1-(u.at||0)/(u.cd||1));
-          armR.rotation.x=-1.6+ph*1.6;}
-        else armR.rotation.x=0;}}
+    }
+    if(rig){
+      if(u.type==='villager'&&(u.state==='gathering'||u.state==='building')){
+        rig.armR.rotation.x=-2.1+Math.abs(Math.sin(u.cs*Math.PI))*1.9;}
+      else if(u.state==='attack'){const ph=Math.max(0,1-(u.at||0)/(u.cd||1));
+        rig.armR.rotation.x=-1.8+ph*1.8;}
+      else if(!u.mv)rig.armR.rotation.x=0;
+    }
     if(m.userData.carry)m.userData.carry.visible=u.ca>0;
     if(m.userData.ring){m.userData.ring.visible=!!u.sel;}
   }
@@ -875,7 +981,8 @@ function drawMinimap(){
 window.__G={units,buildings,trees,bushes,stones,sw,camT,issueCmd,selected,
   THREE,camera,groundPlane,ray,ndc,dims:()=>({W,H}),
   step:s=>{const n=Math.round(s*60);for(let i=0;i<n;i++)update(1/60);},
-  selB:b=>{selectedBldg=b;}};
+  selB:b=>{selectedBldg=b;},zoom:d=>{camDist=d;},
+  mk:(x,y,type,team)=>{const u=makeUnit(x,y,type,team);units.push(u);return u;}};
 // ---- 主迴圈 ----
 let last=performance.now();
 function loop(){
