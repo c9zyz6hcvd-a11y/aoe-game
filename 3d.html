@@ -44,7 +44,7 @@
     border:1px solid #444;min-width:18px;text-align:center;display:none;}
   #grpLabels .gl.has{display:block;border-color:#ffd250;color:#ffd250;}
 </style>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}</script>
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -77,6 +77,8 @@
 <div id="grpLabels"></div>
 <script type="module">
 import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 // ================= 基本 =================
 const canvas=document.getElementById('c');
 const ov=document.getElementById('ov'),octx=ov.getContext('2d');
@@ -824,7 +826,84 @@ function buildHorse(en){
   H.traverse(m=>{if(m.isMesh)m.castShadow=true;});
   return H;
 }
+// ---- 真・骨骼動畫模型（KayKit CC0 + three.js Horse）----
+const CHAR_SRC={villager:'assets/Barbarian.glb',swordsman:'assets/Knight.glb',archer:'assets/Rogue_Hooded.glb'};
+const charLib={};let horseLib=null;
+const gltfLoader=new GLTFLoader();
+const loadGLB=url=>new Promise((res,rej)=>gltfLoader.load(url,res,undefined,rej));
+function pickClip(clips,res){for(const re of res){const c=clips.find(c=>re.test(c.name));if(c)return c;}return null;}
+(async()=>{try{
+  const entries=Object.entries(CHAR_SRC);
+  const gs=await Promise.all(entries.map(([,u2])=>loadGLB(u2)));
+  entries.forEach(([k],i)=>{const g2=gs[i];
+    const bb=new THREE.Box3().setFromObject(g2.scene);
+    charLib[k]={scene:g2.scene,clips:g2.animations,scale:2.35/(bb.max.y-bb.min.y)};});
+  const hg=await loadGLB('assets/Horse.glb');
+  const hb=new THREE.Box3().setFromObject(hg.scene);
+  const hs=2.55/(hb.max.y-hb.min.y),hc=hb.getCenter(new THREE.Vector3());
+  horseLib={scene:hg.scene,clips:hg.animations,scale:hs,
+    offset:{x:-hc.x*hs,y:-hb.min.y*hs,z:-hc.z*hs}};
+  console.log('GLB clips:',Object.fromEntries(Object.entries(charLib).map(([k,v])=>[k,v.clips.map(c=>c.name)])),
+    'horse:',horseLib.clips.map(c=>c.name));
+  // 換走已生成嘅程序化模型 → 重新用真模型生
+  for(const u of units){if(u.mesh){scene.remove(u.mesh);u.mesh=null;u.mixer=null;u.actions=null;u.cur=null;}}
+}catch(e){console.warn('GLB 載入失敗，用返程序化模型',e);}})();
+function mkAct(mixer,clips,res){const c=pickClip(clips,res);return c?mixer.clipAction(c):null;}
+function makeGLBUnit(u){
+  const en=u.team==='enemy';
+  const g=new THREE.Group();
+  const body=new THREE.Group();g.add(body);g.userData.body=body;
+  let ringR=1.5;
+  if(u.type==='horseman'){
+    const h=SkeletonUtils.clone(horseLib.scene);
+    h.scale.setScalar(horseLib.scale);
+    h.position.set(horseLib.offset.x,horseLib.offset.y,horseLib.offset.z);
+    h.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
+      if(en){m.material=m.material.clone();if(m.material.color)m.material.color.lerp(new THREE.Color(0xc03030),.35);}}});
+    const hWrap=new THREE.Group();hWrap.add(h);body.add(hWrap);g.userData.horseGLB=hWrap;
+    u.mixer=new THREE.AnimationMixer(h);
+    const run=horseLib.clips[0];
+    if(run){u.actions={run:u.mixer.clipAction(run)};u.actions.run.play();u.mixer.timeScale=0;}
+    // 騎手（程序化，跨坐）
+    const rider=buildHuman({skin:skinToneOf(u.i),tunic:TEAM[u.team],pants:0x4a4a55,boots:0x33302c,
+      hat:'helmet',weapon:'spear'});
+    rider.scale.setScalar(.92);rider.position.y=1.5;
+    const rg=rider.userData.rig;
+    rg.legL.rotation.x=-1.05;rg.legL.rotation.z=.55;
+    rg.legR.rotation.x=-1.05;rg.legR.rotation.z=-.55;
+    rg.armL.rotation.x=-.5;
+    body.add(rider);g.userData.rig=rg;g.userData.rider=true;
+    ringR=1.9;
+  }else{
+    const lib=charLib[u.type];
+    const c=SkeletonUtils.clone(lib.scene);
+    c.scale.setScalar(lib.scale);
+    c.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
+      if(en){m.material=m.material.clone();if(m.material.color)m.material.color.lerp(new THREE.Color(0xc03030),.3);}}});
+    body.add(c);
+    u.mixer=new THREE.AnimationMixer(c);
+    const cl=lib.clips;
+    u.actions={
+      idle:mkAct(u.mixer,cl,[/^idle$/i,/idle/i]),
+      walk:mkAct(u.mixer,cl,[/^walking_a$/i,/walking/i,/walk/i]),
+      run:mkAct(u.mixer,cl,[/^running_a$/i,/running/i,/run/i]),
+      melee:mkAct(u.mixer,cl,[/melee_attack_chop/i,/melee_attack_slice/i,/melee_attack/i,/attack/i]),
+      shoot:mkAct(u.mixer,cl,[/ranged_shoot/i,/shoot/i,/ranged/i]),
+    };
+    if(!u.actions.melee)u.actions.melee=u.actions.idle;
+    if(!u.actions.shoot)u.actions.shoot=u.actions.melee;
+    if(u.actions.idle){u.actions.idle.play();u.cur='idle';}
+    if(u.type==='villager'){
+      const carry=box(.5,.36,.78,0xc8a030);carry.position.set(-.4,1.68,0);carry.rotation.z=.15;
+      carry.visible=false;body.add(carry);g.userData.carry=carry;}
+    ringR=u.type==='swordsman'?1.5:1.4;
+  }
+  g.userData.glb=true;
+  g.userData.ring=ringSel(ringR);g.add(g.userData.ring);
+  return g;
+}
 function makeUnitMesh(u){
+  if(u.type!=='horseman'&&charLib[u.type])return makeGLBUnit(u);
   const en=u.team==='enemy';
   const g=new THREE.Group();
   const body=new THREE.Group();g.add(body);g.userData.body=body;
@@ -893,6 +972,29 @@ function syncScene(dt,now){
     if(u.dir!==undefined){const cur=m.rotation.y;let d=u.dir-cur;
       while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;
       m.rotation.y=cur+d*Math.min(1,dt*12);}
+    if(m.userData.glb){
+      if(u.mixer)u.mixer.update(dt);
+      if(u.type==='horseman'){
+        if(u.mixer)u.mixer.timeScale=u.mv?1.2:0;
+        const rig2=m.userData.rig;
+        if(rig2&&u.state==='attack'){const ph=Math.max(0,1-(u.at||0)/(u.cd||1));
+          rig2.armR.rotation.x=-1.2+ph*1.2;}
+        else if(rig2)rig2.armR.rotation.x=0;
+      }else if(u.actions){
+        let want='idle';
+        if(u.mv)want=(u.sp>=150&&u.actions.run)?'run':'walk';
+        else if(u.state==='attack')want=u.type==='archer'?'shoot':'melee';
+        else if(u.type==='villager'&&(u.state==='gathering'||u.state==='building'))want='melee';
+        if(want!==u.cur&&u.actions[want]){
+          const prev=u.actions[u.cur],next=u.actions[want];
+          next.enabled=true;next.reset().play();
+          if(prev&&prev!==next)prev.crossFadeTo(next,.16,false);
+          u.cur=want;}
+      }
+      if(m.userData.carry)m.userData.carry.visible=u.ca>0;
+      if(m.userData.ring)m.userData.ring.visible=!!u.sel;
+      continue;
+    }
     const body=m.userData.body,rig=m.userData.rig;
     const busy=(u.type==='villager'&&(u.state==='gathering'||u.state==='building'))||u.state==='attack';
     if(u.mv){
