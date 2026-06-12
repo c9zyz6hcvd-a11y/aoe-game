@@ -148,6 +148,7 @@
   <button id="btnTower" onclick="startBuild('tower')" style="display:none">🏗️箭塔 <span class="cost">🪵60</span><span class="costS">🪨40</span></button>
   <button id="btnWall" onclick="startBuild('wall')" style="display:none">🧱城牆 <span class="cost">🪵10</span></button>
   <button id="btnTrainVil" onclick="trainVillager()" style="display:none">👤村民 <span class="costF">🍓50</span></button>
+  <button id="btnAutoVil" onclick="autoDistributeVils()" style="display:none;border-color:#80d040;">⚖️ 自動分工</button>
   <button id="btnSword" onclick="trainUnit('swordsman')" style="display:none">🗡️劍兵 <span class="costF">🍓60</span><span class="cost">🪵10</span></button>
   <button id="btnArch" onclick="trainUnit('archer')" style="display:none">🏹弓兵 <span class="costF">🍓40</span><span class="cost">🪵40</span></button>
   <button id="btnHorse" onclick="trainUnit('horseman')" style="display:none">🐴騎兵 <span class="costF">🍓80</span><span class="cost">🪵20</span></button>
@@ -1492,7 +1493,7 @@ function rdMenu(){
   const show=(id,cond)=>{const e=document.getElementById(id);if(!e)return e;e.style.display=cond?'':'none';return e;};
   const en=(id,cond)=>{const e=document.getElementById(id);if(e)e.disabled=!cond;};
   gm.style.display='flex';
-  const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3','btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>show(id,0));
+  const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnAutoVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3','btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>show(id,0));
   const ai=ageIdx(currentAge);
   const isGuest=mp.ready&&mp.role==='guest';
   const vs=sel.filter(u=>u.type==='villager'&&u.team===MYTEAM);
@@ -1511,7 +1512,7 @@ function rdMenu(){
     if(ai>=2){en('btnCastle',canAfford(BUILD_DEFS.castle_bldg.cost));show('btnCastle',1);}
   }else if(selectedBldg&&selectedBldg.type==='tc'){
     hideAll();show('bmenuLabel',1).textContent='🏰主堡';
-    en('btnTrainVil',food>=50&&(isGuest||playerCount()<popCap));show('btnTrainVil',1);
+    en('btnTrainVil',food>=50&&(isGuest||playerCount()<popCap));show('btnTrainVil',1);show('btnAutoVil',1);
     if(isGuest){
       const erq=eResearchQueue;const eT=isGuest?eTechs:techs;
       const eres=isGuest&&eResearchQueue;const ecAge=isGuest?eCurrentAge:currentAge;
@@ -1606,6 +1607,18 @@ function upIdle(){const idl=units.find(u=>u.team===MYTEAM&&u.type==='villager'&&
   updateUnitInfo();}
 window.gotoIdleVil=()=>{const idl=units.find(u=>u.team===MYTEAM&&u.type==='villager'&&u.state==='idle');
   if(idl){camT.x=idl.x/S;camT.z=idl.y/S;clampCam();updateCamera();showStatus('🔍閒置村民');}};
+window.autoDistributeVils=()=>{const idles=units.filter(u=>u.team===MYTEAM&&u.type==='villager'&&u.state==='idle');
+  if(!idles.length){showStatus('冇閒置村民');return;}
+  const total=wood+food+stone+gold+1;const need=[{type:'wood',v:Math.max(0,total*2/6-wood)},{type:'food',v:Math.max(0,total*2/6-food)},{type:'stone',v:Math.max(0,total*1/6-stone)},{type:'gold',v:Math.max(0,total*1/6-gold)}];
+  need.sort((a,b)=>b.v-a.v);let assigned=0;
+  for(const v of idles){
+    for(const n of need){
+      const pool=n.type==='wood'?trees:n.type==='food'?bushes:n.type==='stone'?stones:goldMines;
+      const t=pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
+      if(t){const near=units.filter(u=>u.type==='villager'&&u.team===MYTEAM&&u.tRes===t).length;
+        if(near<6){v.tRes=t;v.gType=t.type;v.state='moving';v.tx=t.x;v.ty=t.y;v.path=null;v.pi=0;assigned++;break;}}}
+  }
+  if(assigned)showStatus('⚖️ 分配 '+assigned+' 個村民');else showStatus('冇可用資源');playClick();};
 function upGrpLabels(){
   let h='';for(let i=1;i<=9;i++){const g=grps[i].filter(u=>u.hp>0);
     if(g.length)h+=`<span class="gl has">${i}:${g.length}</span>`;}
