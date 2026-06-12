@@ -165,6 +165,21 @@
   <button onclick="escAction()" title="取消">✖️</button>
 </div>
 <div id="grpLabels"></div>
+<div id="unitInfo" style="display:none;position:fixed;bottom:80px;left:8px;z-index:9;
+  background:rgba(0,0,0,.7);border:1px solid #555;border-radius:10px;padding:8px 12px;
+  color:#eee;font-size:12px;min-width:150px;pointer-events:none;backdrop-filter:blur(3px);">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span id="uiIcon" style="font-size:26px;"></span>
+    <div>
+      <div id="uiName" style="font-weight:bold;font-size:13px;"></div>
+      <div id="uiCount" style="color:#999;font-size:10px;"></div>
+    </div>
+  </div>
+  <div style="background:#333;border-radius:3px;height:6px;margin:6px 0 3px;overflow:hidden;">
+    <div id="uiHpBar" style="background:#4a4;height:6px;width:100%;transition:width .2s;"></div>
+  </div>
+  <div id="uiStats" style="color:#bbb;font-size:11px;line-height:1.6;"></div>
+</div>
 <div id="ageUpProgress">⬆️ 升級中… <span id="ageUpPct">0%</span></div>
 <div id="alert"></div><div id="alertDot"></div>
 <div id="statsPanel">
@@ -1477,8 +1492,30 @@ function rdMenu(){
       else btnU.style.display='';}
   }else{gm.style.display='none';}
 }
+// 單位資訊面板
+const UNIT_ICONS={villager:'👨‍🌾',swordsman:'⚔️',spearman:'🗡️',archer:'🏹',horseman:'🐴',knight:'🛡️',mass_archer:'🏹',catapult:'🪨'};
+function updateUnitInfo(){
+  const p=document.getElementById('unitInfo');if(!p)return;
+  const sel=selected();
+  if(!sel.length){p.style.display='none';return;}
+  const u=sel[0];
+  p.style.display='block';
+  document.getElementById('uiIcon').textContent=UNIT_ICONS[u.type]||'❓';
+  document.getElementById('uiName').textContent=(UNIT_DEFS[u.type]?UNIT_DEFS[u.type].name:'村民');
+  document.getElementById('uiCount').textContent=sel.length>1?`已選 ${sel.length} 個單位`:'';
+  const r=Math.max(0,u.hp/u.mh);
+  const bar=document.getElementById('uiHpBar');
+  bar.style.width=(r*100).toFixed(0)+'%';
+  bar.style.background=r>.5?'#4a4':r>.25?'#da4':'#e33';
+  const rows=[`❤️ ${Math.ceil(u.hp)}/${u.mh}`,`⚔️ 攻擊 ${u.atk}`];
+  if(u.rng>=100)rows.push(`🎯 射程 ${u.rng}`);
+  rows.push(`👟 速度 ${u.sp}`);
+  if(u.type==='villager'&&u.ca>0)rows.push(`🎒 揹住 ${u.ca}`);
+  document.getElementById('uiStats').innerHTML=rows.join('　');
+}
 function upIdle(){const idl=units.find(u=>u.team===MYTEAM&&u.type==='villager'&&u.state==='idle'&&!u.sel);
-  document.getElementById('idleBtn').style.display=idl?'block':'none';}
+  document.getElementById('idleBtn').style.display=idl?'block':'none';
+  updateUnitInfo();}
 window.gotoIdleVil=()=>{const idl=units.find(u=>u.team===MYTEAM&&u.type==='villager'&&u.state==='idle');
   if(idl){camT.x=idl.x/S;camT.z=idl.y/S;clampCam();updateCamera();showStatus('🔍閒置村民');}};
 function upGrpLabels(){
