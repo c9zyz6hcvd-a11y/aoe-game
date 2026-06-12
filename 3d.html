@@ -1188,26 +1188,34 @@ function camKeys(dt){const v=camDist*.9*dt;let mx=0,mz=0;
 // ================= 更新邏輯 =================
 function mvUnit(v,dt){
   stepCooldown=Math.max(0,stepCooldown-dt);
-  let dx=v.tx-v.x,dy=v.ty-v.y,d=Math.hypot(dx,dy);
+  const dx=v.tx-v.x,dy=v.ty-v.y,d=Math.hypot(dx,dy);
   if(d>2){v.mv=1;
     const spd=v.type==='horseman'||v.type==='knight'?10:v.type==='catapult'?4:8;
     const prevWt=v.wt; v.wt+=dt*spd;
-    // 城牆碰撞：冇 path 時檢查 next cell，blocked 就 call A* 避開
-    if(!v.path){
-      const s=Math.min(d,v.sp*dt);
-      const nx=v.x+dx/d*s,ny=v.y+dy/d*s;
-      const ccx=~~(v.x/WORLD.T),ccy=~~(v.y/WORLD.T);
-      const ncx=~~(nx/WORLD.T),ncy=~~(ny/WORLD.T);
-      if((ncx!==ccx||ncy!==ccy)&&blockedSet().has(ncx+','+ncy)){
+    const s=Math.min(d,v.sp*dt);
+    const nx=v.x+dx/d*s,ny=v.y+dy/d*s;
+    // 直接 rectangle 碰撞檢測：單位唔可以穿過建築物
+    let blocked=false;
+    for(const b of buildings){
+      if(!b.complete)continue;
+      if(nx>b.x-1&&nx<b.x+b.w+1&&ny>b.y-1&&ny<b.y+b.h+1){blocked=true;break;}
+    }
+    if(blocked){
+      // 試 A* 繞路
+      if(!v.path||v.path.length===0){
         v.path=aStar(v.x,v.y,v.tx,v.ty);v.pi=0;
         if(v.path&&v.path.length>0){v.tx=v.path[0].x;v.ty=v.path[0].y;}
+        else{v.path=[];v.tx=v.x;v.ty=v.y;} // A* fail: stop
       }
-      // recalc 方向（v.tx 可能已被 path 改咗）
-      dx=v.tx-v.x; dy=v.ty-v.y; d=Math.hypot(dx,dy);
+      // 跟新方向行（如果冇 path 就原地停）
+      const ndx=v.tx-v.x,ndy=v.ty-v.y,nd=Math.hypot(ndx,ndy);
+      const ns=Math.min(nd,v.sp*dt);
+      v.x+=nd>2?ndx/nd*ns:0;v.y+=nd>2?ndy/nd*ns:0;
+      v.dir=nd>2?Math.atan2(ndx,ndy):v.dir;
+    }else{
+      v.x=nx;v.y=ny;
+      v.dir=Math.atan2(dx,dy);
     }
-    const s=Math.min(d,v.sp*dt);
-    v.x+=d>2?dx/d*s:0; v.y+=d>2?dy/d*s:0;
-    v.dir=d>2?Math.atan2(dx,dy):v.dir;
     if(Math.sin(prevWt)>=0&&Math.sin(v.wt)<0){
       const heavy=v.type==='horseman'||v.type==='knight'||v.type==='catapult';
       spawnDust(v.x,v.y,heavy);
