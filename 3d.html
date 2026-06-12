@@ -446,17 +446,18 @@ function advanceAge(){
   spend(AGES[currentAge].cost);ageUpgrading=true;ageTimer=0;
   ageUpProgressEl.style.display='block';showStatus('⬆️ 升級時代中…');}
 function updateAge(dt){
-  if(!ageUpgrading)return;
-  const rt=AGES[currentAge].resTime;
-  ageTimer+=dt;ageUpPctEl.textContent=Math.floor(ageTimer/rt*100)+'%';
-  if(ageTimer>=rt){
-    ageUpgrading=false;ageTimer=0;ageUpProgressEl.style.display='none';
-    currentAge=AGES[currentAge].next;
-    const a=AGES[currentAge];
-    ageBadgeEl.textContent=a.icon+a.name;
-    showStatus('🎉 進入'+a.name+'！');playDrop();
-    spawnFx(tc.x+tc.w/2,tc.y+tc.h/2,'#ffd250',24);}
-  // 敵方時代升級（主機側處理）
+  // 玩家時代升級
+  if(ageUpgrading){
+    const rt=AGES[currentAge].resTime;
+    ageTimer+=dt;ageUpPctEl.textContent=Math.floor(ageTimer/rt*100)+'%';
+    if(ageTimer>=rt){
+      ageUpgrading=false;ageTimer=0;ageUpProgressEl.style.display='none';
+      currentAge=AGES[currentAge].next;
+      const a=AGES[currentAge];
+      ageBadgeEl.textContent=a.icon+a.name;
+      showStatus('🎉 進入'+a.name+'！');playDrop();
+      spawnFx(tc.x+tc.w/2,tc.y+tc.h/2,'#ffd250',24);}}
+  // 敵方時代升級（主機側處理，獨立於玩家）
   if(eAgeUpgrading){
     const ert=AGES[eCurrentAge].resTime;eAgeTimer+=dt;
     if(eAgeTimer>=ert){eAgeUpgrading=false;eAgeTimer=0;eCurrentAge=AGES[eCurrentAge].next;}}}
@@ -500,18 +501,29 @@ function doResearch(key){
 // ---- TC ----
 const tc={x:WORLD.w/2-280,y:WORLD.h/2-40,w:100,h:100,hp:1000,mh:1000,team:'player'};
 const etc={x:WORLD.w-250,y:WORLD.h/2-40,w:100,h:100,hp:1000,mh:1000,team:'enemy'};
-// 勝負
+// 勝負 + 戰績
 let isGameOver=false;
+function getRecord(){try{const d=JSON.parse(localStorage.getItem('rts3d_rec')||'{}');return{wins:d.wins||0,losses:d.losses||0,elo:d.elo||1000,kills:d.kills||0,deaths:d.deaths||0};}catch(e){return{wins:0,losses:0,elo:1000,kills:0,deaths:0};}}
+function saveRecord(win,k,d){
+  const r=getRecord();if(win)r.wins++;else r.losses++;
+  r.kills+=k;r.deaths+=d;
+  const oppElo=1000;const K=32;const expected=1/(1+Math.pow(10,(oppElo-r.elo)/400));
+  r.elo=Math.round(r.elo+K*((win?1:0)-expected));
+  localStorage.setItem('rts3d_rec',JSON.stringify(r));return r;}
 function endGame(win){
   if(isGameOver)return; isGameOver=true;
+  if(mp.reconnectT)clearTimeout(mp.reconnectT);
   const elapsed=Math.floor((Date.now()-stats.startTime)/1000);
   const mm=Math.floor(elapsed/60),ss=elapsed%60;
   const timeStr=`${mm}分${ss<10?'0':''}${ss}秒`;
+  const rec=saveRecord(win,stats.kills,stats.losses);
   const sp=document.getElementById('statsPanel');
   document.getElementById('spIcon').textContent=win?'🏆':'💀';
   document.getElementById('spTitle').textContent=win?'你贏了！':'你輸了！';
   document.getElementById('spSub').textContent=win?`摧毀敵方主堡，歷時 ${timeStr}`:`主堡淪陷，歷時 ${timeStr}`;
   const rows=[
+    ['戰績',`${rec.wins}W / ${rec.losses}L`],
+    ['Elo',rec.elo+''],
     ['時代達成',AGES[currentAge].icon+AGES[currentAge].name],
     ['歷時',timeStr],
     ['波次撐過',stats.wavesCleared+' 波'],
@@ -1097,14 +1109,17 @@ function enemyAI(dt){
     eFood-=50;const v=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+10,'villager','enemy');
     v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;units.push(v);
     if(eVils.length===0)eFood+=50;}// 第一個村民免費(安全網)
-  // === Phase 2: 建屋順序 ===
+  // === Phase 2: 建屋順序 (每 tick 最多一棟) ===
+  let builtThisTick=0;
   const buildIf=(cond,type,costCheck)=>{
-    if(!cond)return;const def=BUILD_DEFS[type];
+    if(!cond||builtThisTick>0)return;const def=BUILD_DEFS[type];
     if(!costCheck(def))return;
     const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60-Math.random()*80,def.w,def.h);
     if(!sp)return;eWood-=(def.cost.wood||0);eFood-=(def.cost.food||0);eStone-=(def.cost.stone||0);eGold-=(def.cost.gold||0);
     const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type,hp:1,maxHp:def.hp||200,name:def.name,p:0,bt:def.bt,complete:0,pb:def.pb||0,team:'enemy'};
-    buildings.push(b);eVils.sort((a,b)=>Math.hypot(a.x-sp.x,a.y-sp.y)-Math.hypot(b.x-sp.x,b.y-sp.y)).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});};
+    buildings.push(b);const curVils=eUnits.filter(u=>u.type==='villager'&&u.state==='idle');
+    curVils.sort((a,b)=>Math.hypot(a.x-sp.x,a.y-sp.y)-Math.hypot(b.x-sp.x,b.y-sp.y)).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});
+    builtThisTick=1;};
   buildIf((eUnits.length>=ePopCap-1||eVils.length>=6)&&!hasHouse,'house',d=>eWood>=d.cost.wood);
   buildIf(!hasMill&&hasHouse,'mill',d=>eWood>=d.cost.wood&&eFood>=d.cost.food);
   buildIf(!hasBsk&&hasHouse,'barracks',d=>eWood>=d.cost.wood&&eFood>=d.cost.food);
@@ -1125,21 +1140,11 @@ function enemyAI(dt){
     if(wantStone&&stones.some(s=>s.res>0)){const t=stones.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='stone';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
   }
-  // === Phase 4: 收集返倉 ===
-  for(const v of eVils){
-    if(!v.mv&&v.state==='returning'){
-      if(v.gType==='wood')eWood+=Math.floor(v.ca*.5);else if(v.gType==='food')eFood+=Math.floor(v.ca*.5);
-      else if(v.gType==='stone')eStone+=Math.floor(v.ca*.5);else if(v.gType==='gold')eGold+=Math.floor(v.ca*.5);
-      v.ca=0;const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:v.gType==='gold'?goldMines:stones;
-      const nxt=pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
-      if(nxt){v.tRes=nxt;const e=edgeOf(nxt,v);v.tx=e.x;v.ty=e.y;v.state='moving';}
-      else v.state='idle';}
-    if(v.ca>=v.cm&&v.state==='gathering'){const c=tcCenter(etc);v.tx=c.x;v.ty=c.y;v.state='returning';}
-  }
+  // (Phase 4 removed — resource drop-off + gathering→return handled by updateVil)
   // === Phase 5: 時代升級 ===
-  if(!eAgeUpgrading&&eVils.length>=5&&hasMill&&eFood>=400&&eAge<1){ // Dark→Feudal
+  if(!eAgeUpgrading&&eVils.length>=5&&hasMill&&eAge<1){ // Dark→Feudal
     const a=AGES[eCurrentAge];if(a.next&&canAffordE(a.cost)){spendE(a.cost);eAgeUpgrading=true;eAgeTimer=0;}}
-  if(!eAgeUpgrading&&eVils.length>=7&&hasBS&&eFood>=700&&eGold>=150&&eAge<2){ // Feudal→Castle
+  if(!eAgeUpgrading&&eVils.length>=7&&hasBS&&eAge>=1&&eAge<2){ // Feudal→Castle
     const a=AGES[eCurrentAge];if(a.next&&canAffordE(a.cost)){spendE(a.cost);eAgeUpgrading=true;eAgeTimer=0;}}
   // === Phase 6: 研究科技 ===
   if(!eResearchQueue&&hasBS&&eAge>=1){
@@ -1997,14 +2002,19 @@ window.mpHost=async()=>{
     console.log('[MP host] incoming connection');
     c.on('error',e=>console.log('[MP host] conn error',e));
     c.on('open',()=>{
-      if(mp.ready)return; // BC 已接通
+      if(mp.ready)return;
       mp.conn=c;mp.via='peer';mp.send=d=>mp.conn.send(d);
+      if(mp.reconnecting){mp.reconnecting=false;mp.ready=true;
+        clearTimeout(mp.reconnectT);sendInit();showStatus('🌐 對手已重連！');timerEl.textContent='🌐 對戰中';return;}
       mpGo('host');});
     c.on('data',d=>{if(mp.via==='peer')hostRecv(d);});
-    c.on('close',()=>{if(mp.via==='peer'){mp.ready=false;showStatus('⚠️ 對手斷線');}});
+    c.on('close',()=>{if(mp.via==='peer'){mp.ready=false;mp.reconnecting=true;showStatus('⚠️ 對手斷線，等待重連(30s)...');timerEl.textContent='⏳ 重連中';
+      mp.reconnectT=setTimeout(()=>{if(!mp.ready){showStatus('💀 對手超時');endGame(true);}},30000);}});
   });
 };
+let mpJoinId=null;
 function mpJoin(id){
+  mpJoinId=id; // save for reconnect
   loadPeerJS().then(()=>{
     document.getElementById('lbTitle').textContent='加入緊朋友嘅房…';
     document.getElementById('lbHostBtn').style.display='none';
@@ -2017,11 +2027,15 @@ function mpJoin(id){
       const c=mp.peer.connect(id,{reliable:true});
       c.on('error',e=>console.log('[MP guest] conn error',e));
       c.on('open',()=>{console.log('[MP guest] conn open!');
-        if(mp.ready)return; // BC 已接通
+        if(mp.ready)return;
         mp.conn=c;mp.via='peer';mp.send=d=>mp.conn.send(d);
+        if(mp.reconnecting){mp.reconnecting=false;mp.ready=true;
+          clearTimeout(mp.reconnectT);showStatus('🌐 已重連！');timerEl.textContent='🌐 對戰中';return;}
         mpGo('guest');});
       c.on('data',d=>{if(mp.via==='peer')guestRecv(d);});
-      c.on('close',()=>{if(mp.via==='peer'){mp.ready=false;showStatus('⚠️ 主機斷線');}});
+      c.on('close',()=>{if(mp.via==='peer'){mp.ready=false;mp.reconnecting=true;showStatus('⚠️ 主機斷線，嘗試重連(30s)...');timerEl.textContent='⏳ 重連中';
+        mp.reconnectT=setTimeout(()=>{if(!mp.ready){showStatus('💀 無法重連');endGame(false);}},30000);
+        if(mpJoinId)setTimeout(()=>mpJoin(mpJoinId),1500);}});
     });
   }).catch(()=>{showStatus('PeerJS 載入失敗（同機分頁照玩）');bcSetup(id,'guest');});
 }
@@ -2155,7 +2169,8 @@ function applySnap(){
   // sync enemy tech/age state
   if(d.et){const ek=Object.keys(eTechs);d.et.forEach((v,i)=>{if(ek[i])eTechs[ek[i]].done=!!v;});}
   if(d.erq!==undefined){eResearchQueue=d.erq>=0?Object.keys(eTechs)[d.erq]:null;}
-  if(d.ea!==undefined){const ages=Object.keys(AGES);eCurrentAge=ages[d.ea]||'dark';}
+  if(d.ea!==undefined){const ages=Object.keys(AGES);eCurrentAge=ages[d.ea]||'dark';
+    ageBadgeEl.textContent=AGES[eCurrentAge].icon+AGES[eCurrentAge].name;ageBadgeEl.style.background='rgba(120,20,20,.7)';}
   eAgeUpgrading=!!d.eaUp;
   upPop();popCapEl.textContent='∞';
   if(d.over&&!isGameOver)endGame(d.over===2);
