@@ -1068,7 +1068,7 @@ const grps={};for(let i=1;i<=9;i++)grps[i]=[];
 let lastGrpTap={};
 function findEnemyAt(wx,wy,team=MYTEAM){
   const foe=team==='player'?'enemy':'player';
-  const u=units.find(u=>u.team===foe&&u.hp>0&&Math.hypot(u.x-wx,u.y-wy)<(u.sz||20)+8);
+  const u=units.find(u=>u.team===foe&&u.hp>0&&fogVisible(u.x,u.y)&&Math.hypot(u.x-wx,u.y-wy)<(u.sz||20)+8);
   if(u)return u;
   const ftc=team==='player'?etc:tc;
   if(ftc.hp>0&&wx>=ftc.x-10&&wx<=ftc.x+ftc.w+10&&wy>=ftc.y-10&&wy<=ftc.y+ftc.h+10)return ftc;
@@ -2228,6 +2228,7 @@ function drawOverlay(){
   octx.clearRect(0,0,W,H);
   for(const u of units){
     if(u.hp>=u.mh)continue;
+    if(u.team!==MYTEAM&&!fogVisible(u.x,u.y))continue;
     const p=proj(u.x,u.y,(u.type==='horseman'||u.type==='knight')?3.6:2.8);if(!p.vis)continue;
     octx.fillStyle='rgba(0,0,0,.55)';octx.fillRect(p.x-15,p.y-4,30,5);
     const r=u.hp/u.mh;
@@ -2596,6 +2597,72 @@ function guestTick(dt){
 // URL ?join=xxx 自動入房
 {const jid=new URLSearchParams(location.search).get('join');
  if(jid)setTimeout(()=>mpJoin(jid),300);}
+// ================= Fog of War =================
+const FOG={on:(localStorage.fog??'1')==='1',C:40,W:Math.ceil(WORLD.w/40),H:Math.ceil(WORLD.h/40)};
+FOG.exp=new Uint8Array(FOG.W*FOG.H);FOG.vis=new Uint8Array(FOG.W*FOG.H);
+let fogAcc=99,fogTexDirty=true;
+function fogIdx(x,y){return Math.min(FOG.H-1,Math.max(0,~~(y/FOG.C)))*FOG.W+Math.min(FOG.W-1,Math.max(0,~~(x/FOG.C)));}
+function fogVisible(x,y){return !FOG.on||FOG.vis[fogIdx(x,y)]===1;}
+function fogExplored(x,y){return !FOG.on||FOG.exp[fogIdx(x,y)]===1;}
+function updateFog(dt){
+  if(!FOG.on)return;
+  fogAcc+=dt;if(fogAcc<.3)return;fogAcc=0;
+  FOG.vis.fill(0);
+  const c=FOG.C;
+  const mark=(x,y,r)=>{
+    const gx0=Math.max(0,~~((x-r)/c)),gx1=Math.min(FOG.W-1,~~((x+r)/c)),
+          gy0=Math.max(0,~~((y-r)/c)),gy1=Math.min(FOG.H-1,~~((y+r)/c));
+    for(let gy=gy0;gy<=gy1;gy++)for(let gx=gx0;gx<=gx1;gx++){
+      const cx=gx*c+c/2,cy=gy*c+c/2;
+      if((cx-x)*(cx-x)+(cy-y)*(cy-y)<=r*r){const i=gy*FOG.W+gx;FOG.vis[i]=1;FOG.exp[i]=1;}}};
+  for(const u of units)if(u.team===MYTEAM&&u.hp>0)mark(u.x,u.y,240);
+  for(const b of buildings)if(b.team===MYTEAM&&b.complete&&b.hp>0)
+    mark(b.x+b.w/2,b.y+b.h/2,(b.type==='tower'||b.type==='castle_bldg')?340:200);
+  const myTC=MYTEAM==='player'?tc:etc;
+  if(myTC.hp>0)mark(myTC.x+50,myTC.y+50,320);
+  fogTexDirty=true;
+}
+const fogCv=document.createElement('canvas');fogCv.width=FOG.W;fogCv.height=FOG.H;
+const fogCtx2=fogCv.getContext('2d');
+const fogTex=new THREE.CanvasTexture(fogCv);fogTex.magFilter=THREE.LinearFilter;
+const fogPlane=new THREE.Mesh(new THREE.PlaneGeometry(WORLD.w/S,WORLD.h/S),
+  new THREE.MeshBasicMaterial({map:fogTex,transparent:true,depthWrite:false}));
+fogPlane.rotation.x=-Math.PI/2;fogPlane.position.set(MAPCX,8,MAPCZ);
+fogPlane.renderOrder=5;fogPlane.visible=FOG.on;scene.add(fogPlane);
+function redrawFogTex(){
+  if(!fogTexDirty||!FOG.on)return;fogTexDirty=false;
+  const d=fogCtx2.createImageData(FOG.W,FOG.H);
+  for(let i=0;i<FOG.vis.length;i++){const o=i*4;
+    d.data[o]=4;d.data[o+1]=7;d.data[o+2]=11;
+    d.data[o+3]=FOG.vis[i]?0:(FOG.exp[i]?115:236);}
+  fogCtx2.putImageData(d,0,0);fogTex.needsUpdate=true;
+}
+function applyFog(){
+  if(!FOG.on)return;
+  for(const u of units)if(u.mesh)u.mesh.visible=(u.team===MYTEAM)||fogVisible(u.x,u.y);
+  for(const b of buildings)if(b.mesh&&!b.mesh.userData.dead)
+    b.mesh.visible=(b.team===MYTEAM)||fogExplored(b.x+b.w/2,b.y+b.h/2);
+  for(const arr of[trees,bushes,stones,goldMines])
+    for(const r of arr)if(r.mesh)r.mesh.visible=fogExplored(r.x,r.y);
+  const foeTC=MYTEAM==='player'?etc:tc,foeM=MYTEAM==='player'?etcMesh:tcMesh;
+  if(foeTC.hp>0)foeM.visible=fogExplored(foeTC.x+50,foeTC.y+50);
+}
+function drawFogMini(){
+  if(!FOG.on)return;
+  const sx=180/WORLD.w*FOG.C,sy=135/WORLD.h*FOG.C;
+  for(let gy=0;gy<FOG.H;gy++)for(let gx=0;gx<FOG.W;gx++){
+    const i=gy*FOG.W+gx;
+    if(FOG.vis[i])continue;
+    mctx.fillStyle=FOG.exp[i]?'rgba(0,0,0,.45)':'rgba(0,0,0,.92)';
+    mctx.fillRect(gx*sx,gy*sy,sx+.5,sy+.5);}
+}
+function setFog(on){FOG.on=!!on;localStorage.fog=on?'1':'0';fogPlane.visible=FOG.on;fogTexDirty=true;
+  if(!FOG.on){for(const u of units)if(u.mesh)u.mesh.visible=true;
+    for(const b of buildings)if(b.mesh&&!b.mesh.userData.dead)b.mesh.visible=true;
+    for(const arr of[trees,bushes,stones,goldMines])for(const r of arr)if(r.mesh)r.mesh.visible=true;
+    if(etc.hp>0)etcMesh.visible=true;if(tc.hp>0)tcMesh.visible=true;}
+  showStatus(FOG.on?'🌫️ 戰爭迷霧：開':'🌫️ 戰爭迷霧：關');}
+window.setFog=setFog;
 // debug handle
 // 單機模式：讀上次 lobby 設定
 (function(){
@@ -2626,9 +2693,10 @@ function loop(){
   if(mp.ready&&mp.role==='guest')guestTick(dt);else update(dt);
   updateDayNight();
   syncScene(dt,now);
+  updateFog(dt);redrawFogTex();applyFog();
   renderer.render(scene,camera);
   drawOverlay();
-  drawMinimap();
+  drawMinimap();drawFogMini();
   requestAnimationFrame(loop);
 }
 loop();
