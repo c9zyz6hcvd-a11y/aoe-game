@@ -116,6 +116,11 @@
   <div id="lbBody" style="font-size:13px;color:#bbb;max-width:430px;line-height:1.8;padding:0 16px;">
     開房後將連結傳俾朋友，佢一開就入到你局。<br>你做藍方，朋友做紅方。（用 P2P 連線，雙方都要開住個 page）
   </div>
+  <div id="lbSettings" style="margin:12px 0;display:flex;flex-direction:column;gap:8px;font-size:13px;color:#ccc;text-align:left;max-width:300px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;"><label>初始資源：</label><select id="lbRes" style="background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px;font-size:12px;"><option value="std">標準 (100🪵80🍓)</option><option value="rich">富裕 (500🪵500🍓200🪨200💰)</option></select></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;"><label>AI 難度：</label><select id="lbAi" style="background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px;font-size:12px;"><option value="easy">簡單</option><option value="normal" selected>普通</option><option value="hard">困難</option></select></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;"><label>日夜循環：</label><select id="lbDay" style="background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px;font-size:12px;"><option value="on" selected>開啟</option><option value="off">關閉（鎖正午）</option></select></div>
+  </div>
   <div id="lbLink" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent);this.style.borderColor='#6f6'"
     style="display:none;margin:14px;padding:10px 14px;background:#222;border-radius:8px;font-size:12px;
     max-width:82%;word-break:break-all;cursor:pointer;border:1px solid #555;"></div>
@@ -123,6 +128,8 @@
   <div style="margin-top:16px;display:flex;gap:10px;">
     <button id="lbHostBtn" onclick="mpHost()" style="font-size:15px;padding:10px 26px;background:#3070d0;color:#fff;
       border:none;border-radius:10px;cursor:pointer;font-weight:bold;">🏠 開房做主機</button>
+    <button onclick="startSinglePlayer()" style="font-size:15px;padding:10px 26px;background:#409050;color:#fff;
+      border:none;border-radius:10px;cursor:pointer;font-weight:bold;">⚔️ 單機</button>
     <button onclick="closeLobby()" style="font-size:15px;padding:10px 26px;background:#444;color:#eee;
       border:none;border-radius:10px;cursor:pointer;">返回</button>
   </div>
@@ -237,6 +244,7 @@ fill.target.position.set(MAPCX,0,MAPCZ);
 scene.add(fill);scene.add(fill.target);
 const DAY_LEN=300; // 一日 5 分鐘
 function updateDayNight(){
+  if(!dayCycleOn){const t=.5;const a=t*Math.PI*2;const sunUp=1;sun.position.set(MAPCX+Math.sin(a)*160,40+sunUp*130,MAPCZ-90);sun.intensity=2.2;hemi.intensity=1.07;fill.intensity=.58;const k=1;scene.background.copy(NIGHT_SKY).lerp(DAY_SKY,k);scene.fog.color.copy(scene.background);sun.color.setHSL(.09,.5,.95);return;}
   const t=(gameTime%DAY_LEN)/DAY_LEN; // 0..1，開場 = 正午
   const a=t*Math.PI*2;
   const sunUp=Math.max(0,Math.cos(a));
@@ -1280,7 +1288,7 @@ function updateTowers(dt){
 // ---- 敵方 AI ----
 let eaiTimer=0;const EAI_INTERVAL=2;
 // ---- 敵方 AI (難度分級) ----
-let aiDiff='normal',aiPers='balanced'; // AI 難度 + 個性
+let aiDiff='normal',aiPers='balanced',dayCycleOn=true; // AI 難度 + 個性 + 日夜開關
 try{const d=localStorage.getItem('aiDiff');if(d)aiDiff=d;}catch(e){}
 try{const d=localStorage.getItem('aiPers');if(d)aiPers=d;}catch(e){}
 window.setAiDiff=d=>{aiDiff=d;localStorage.setItem('aiDiff',d);showStatus('AI難度: '+d);};
@@ -2212,15 +2220,60 @@ function loadPeerJS(){return new Promise((res,rej)=>{
   s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
 window.openLobby=()=>{document.getElementById('lobby').style.display='flex';
   document.getElementById('lbJoinRow').style.display=mp.ready?'none':'flex';};
+function applyGameSettings(role){
+  // 從 lobby select 或 localStorage 讀設定，host 先 save（寫入 ls），guest 跟 ls
+  if(role==='host'){
+    const res=document.getElementById('lbRes')?.value||'std';
+    const ai=document.getElementById('lbAi')?.value||'normal';
+    const day=document.getElementById('lbDay')?.value||'on';
+    const sets={res,ai,day};
+    localStorage.setItem('gameSettings',JSON.stringify(sets));
+    // send to guest via MP
+    if(mp.send)mp.send({c:'settings',res,ai,day});
+  }
+  const sets=JSON.parse(localStorage.getItem('gameSettings')||'{}');
+  // 應用資源設定
+  if(sets.res==='rich'){
+    if(role==='guest'){wood=500;food=500;stone=200;gold=200;} // host already rich
+    eWood=500;eFood=500;eStone=200;eGold=200;
+    if(role==='host'){wood=500;food=500;stone=200;gold=200;}
+    woodEl.textContent=wood;foodEl.textContent=food;stoneEl.textContent=stone;goldEl.textContent=gold;
+  }
+  // 應用 AI 難度
+  if(sets.ai){aiDiff=sets.ai;setAiDiff(sets.ai);}
+  // 應用日夜開關
+  if(sets.day==='off'){dayCycleOn=false;
+    if(typeof updateDayNight==='function')updateDayNight();} // 即鎖正午
+}
 window.closeLobby=()=>{document.getElementById('lobby').style.display='none';};
+window.startSinglePlayer=()=>{
+  const res=document.getElementById('lbRes')?.value||'std';
+  const ai=document.getElementById('lbAi')?.value||'normal';
+  const day=document.getElementById('lbDay')?.value||'on';
+  const sets={res,ai,day};
+  localStorage.setItem('gameSettings',JSON.stringify(sets));
+  // 應用資源
+  if(sets.res==='rich'){wood=500;food=500;stone=200;gold=200;
+    woodEl.textContent=wood;foodEl.textContent=food;stoneEl.textContent=stone;goldEl.textContent=gold;}
+  // 應用 AI
+  if(sets.ai){aiDiff=sets.ai;setAiDiff(sets.ai);}
+  // 應用日夜
+  if(sets.day==='off'){dayCycleOn=false;updateDayNight();}
+  else{dayCycleOn=true;}
+  closeLobby();
+  showStatus('⚔️ 單機模式！'+(sets.res==='rich'?' (富裕資源)':'')+(sets.day==='off'?' (永晝)':''));
+};
 function mpGo(role){ // 接通後共同初始化
   mp.ready=true;mp.role=role;
+  applyGameSettings(role);
   if(role==='guest'){MYTEAM='enemy';
     camT.x=(etc.x+50)/S;camT.z=(etc.y+150)/S;clampCam();updateCamera();}
   window.closeLobby();mpStart();
   if(role==='host'){
-    // 紅方開局：同藍方一樣 — 100木 80食 + 3個村民
-    eWood=100;eFood=80;eStone=0;eGold=0;
+    // 紅方開局：跟設定
+    const sets=JSON.parse(localStorage.getItem('gameSettings')||'{}');
+    const rich=sets.res==='rich';
+    eWood=rich?500:100;eFood=rich?500:80;eStone=rich?200:0;eGold=rich?200:0;
     for(let i=0;i<3;i++){
       const v=makeUnit(etc.x+etc.w/2-30+i*30,etc.y+etc.h+30,'villager','enemy');
       units.push(v);}
@@ -2381,6 +2434,7 @@ function hostRecv(d){
   }
 }
 function guestRecv(d){
+  if(d.c==='settings'){localStorage.setItem('gameSettings',JSON.stringify({res:d.res,ai:d.ai,day:d.day}));applyGameSettings('guest');return;}
   if(d.c==='init'){
     const rebuild=(arr,data,maker,rr,ty)=>{
       for(const o of arr)if(o.mesh)scene.remove(o.mesh);
@@ -2454,6 +2508,14 @@ function guestTick(dt){
 {const jid=new URLSearchParams(location.search).get('join');
  if(jid)setTimeout(()=>mpJoin(jid),300);}
 // debug handle
+// 單機模式：讀上次 lobby 設定
+(function(){
+  const sets=JSON.parse(localStorage.getItem('gameSettings')||'{}');
+  if(sets.ai){aiDiff=sets.ai;setAiDiff(sets.ai);}
+  if(sets.day==='off'){dayCycleOn=false;updateDayNight();}
+  if(sets.res==='rich'){wood=500;food=500;stone=200;gold=200;
+    woodEl.textContent=wood;foodEl.textContent=food;stoneEl.textContent=stone;goldEl.textContent=gold;}
+})();
 window.__G={units,buildings,trees,bushes,stones,goldMines,sw,camT,issueCmd,selected,
   THREE,camera,groundPlane,ray,ndc,dims:()=>({W,H}),
   step:s=>{const n=Math.round(s*60);for(let i=0;i<n;i++)update(1/60);},
