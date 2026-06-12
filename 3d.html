@@ -951,14 +951,14 @@ function blockedSet(){
       const a=walls[i],b=walls[j];
       const cxA=a.x+a.w/2,cyA=a.y+a.h/2,cxB=b.x+b.w/2,cyB=b.y+b.h/2;
       const dist=Math.hypot(cxA-cxB,cyA-cyB);
-      if(dist<56){ // 牆距 <56px 視為連接，block 沿途所有 cell
-        const steps=Math.ceil(dist/WORLD.T*2); // 每半格一個 sample
+      if(dist<100){ // 牆距 <100px（涵蓋鄰接 grid cell 80px）
+        const steps=Math.ceil(dist/WORLD.T*3); // 每 1/3 格 sample
         for(let k=0;k<=steps;k++){
           const t=steps?k/steps:0;
           const px=cxA+(cxB-cxA)*t,py=cyA+(cyB-cyA)*t;
           s.add(~~(px/WORLD.T)+','+~~(py/WORLD.T));}
-        // Block wider — 加左右偏移防止繞過
-        const dx=-(cyB-cyA)/dist*30,dy=(cxB-cxA)/dist*30;
+        // Block wider — 加左右偏移(WORLD.T/2+2=42px)防止繞過
+        const dx=-(cyB-cyA)/dist*42,dy=(cxB-cxA)/dist*42;
         for(let k=0;k<=steps;k++){
           const t=steps?k/steps:0;
           const px=cxA+(cxB-cxA)*t+dx,py=cyA+(cyB-cyA)*t+dy;
@@ -1188,13 +1188,13 @@ function camKeys(dt){const v=camDist*.9*dt;let mx=0,mz=0;
 // ================= 更新邏輯 =================
 function mvUnit(v,dt){
   stepCooldown=Math.max(0,stepCooldown-dt);
-  const dx=v.tx-v.x,dy=v.ty-v.y,d=Math.hypot(dx,dy);
+  let dx=v.tx-v.x,dy=v.ty-v.y,d=Math.hypot(dx,dy);
   if(d>2){v.mv=1;
     const spd=v.type==='horseman'||v.type==='knight'?10:v.type==='catapult'?4:8;
     const prevWt=v.wt; v.wt+=dt*spd;
-    const s=Math.min(d,v.sp*dt);
     // 城牆碰撞：冇 path 時檢查 next cell，blocked 就 call A* 避開
     if(!v.path){
+      const s=Math.min(d,v.sp*dt);
       const nx=v.x+dx/d*s,ny=v.y+dy/d*s;
       const ccx=~~(v.x/WORLD.T),ccy=~~(v.y/WORLD.T);
       const ncx=~~(nx/WORLD.T),ncy=~~(ny/WORLD.T);
@@ -1202,9 +1202,12 @@ function mvUnit(v,dt){
         v.path=aStar(v.x,v.y,v.tx,v.ty);v.pi=0;
         if(v.path&&v.path.length>0){v.tx=v.path[0].x;v.ty=v.path[0].y;}
       }
+      // recalc 方向（v.tx 可能已被 path 改咗）
+      dx=v.tx-v.x; dy=v.ty-v.y; d=Math.hypot(dx,dy);
     }
-    v.x+=dx/d*s;v.y+=dy/d*s;
-    v.dir=Math.atan2(dx,dy);
+    const s=Math.min(d,v.sp*dt);
+    v.x+=d>2?dx/d*s:0; v.y+=d>2?dy/d*s:0;
+    v.dir=d>2?Math.atan2(dx,dy):v.dir;
     if(Math.sin(prevWt)>=0&&Math.sin(v.wt)<0){
       const heavy=v.type==='horseman'||v.type==='knight'||v.type==='catapult';
       spawnDust(v.x,v.y,heavy);
