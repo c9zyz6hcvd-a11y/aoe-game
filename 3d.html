@@ -101,6 +101,26 @@
   <b>A</b>全選村民 <b>B</b>蓋房 <b>Ctrl+1~9</b>編隊 <b>1~9</b>選編隊
 </div>
 <div id="idleBtn" onclick="gotoIdleVil()">⚠️ 閒置</div>
+<div id="mpBtn" onclick="openLobby()" style="position:fixed;top:80px;right:8px;color:#80d0ff;font-size:12px;font-weight:bold;
+  background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #4090d0;">🌐 對戰</div>
+<div id="lobby" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;
+  flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;">
+  <div style="font-size:44px;">🌐</div>
+  <div id="lbTitle" style="font-size:22px;font-weight:bold;margin:8px 0;">真人對戰（Beta）</div>
+  <div id="lbBody" style="font-size:13px;color:#bbb;max-width:430px;line-height:1.8;padding:0 16px;">
+    開房後將連結傳俾朋友，佢一開就入到你局。<br>你做藍方，朋友做紅方。（用 P2P 連線，雙方都要開住個 page）
+  </div>
+  <div id="lbLink" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent);this.style.borderColor='#6f6'"
+    style="display:none;margin:14px;padding:10px 14px;background:#222;border-radius:8px;font-size:12px;
+    max-width:82%;word-break:break-all;cursor:pointer;border:1px solid #555;"></div>
+  <div id="lbHint" style="display:none;font-size:11px;color:#888;">↑ 點一下複製，傳俾朋友，等佢加入…</div>
+  <div style="margin-top:16px;display:flex;gap:10px;">
+    <button id="lbHostBtn" onclick="mpHost()" style="font-size:15px;padding:10px 26px;background:#3070d0;color:#fff;
+      border:none;border-radius:10px;cursor:pointer;font-weight:bold;">🏠 開房做主機</button>
+    <button onclick="closeLobby()" style="font-size:15px;padding:10px 26px;background:#444;color:#eee;
+      border:none;border-radius:10px;cursor:pointer;">返回</button>
+  </div>
+</div>
 <div id="status"></div>
 <div id="bmenu">
   <span class="label" id="bmenuLabel"></span>
@@ -269,7 +289,9 @@ const woodEl=document.getElementById('wood'),foodEl=document.getElementById('foo
 let statusTimer=0;
 function showStatus(m){statusEl.textContent=m;statusEl.style.opacity=1;statusTimer=3;}
 let popCap=5;
-function playerCount(){return units.filter(u=>u.team==='player').length;}
+let MYTEAM='player'; // 多人時 guest = 'enemy'（紅方）
+const mp={role:null,conn:null,peer:null,ready:false,snap:null,via:null,send:()=>{}};
+function playerCount(){return units.filter(u=>u.team===MYTEAM).length;}
 function upPop(){popEl.textContent=playerCount();popCapEl.textContent=popCap;}
 let gameTime=0;
 // ---- 波次系統 ----
@@ -369,6 +391,9 @@ function canAfford(c){return(!c.wood||wood>=c.wood)&&(!c.food||food>=c.food)&&(!
 function spend(c){if(c.wood){wood-=c.wood;woodEl.textContent=wood;}if(c.food){food-=c.food;foodEl.textContent=food;}if(c.stone){stone-=c.stone;stoneEl.textContent=stone;}if(c.gold){gold-=c.gold;goldEl.textContent=gold;}}
 function startBuild(type){
   const def=BUILD_DEFS[type];if(!def)return;
+  if(mp.ready&&mp.role==='guest'){
+    if(!canAfford(def.cost)){showStatus('資源不足');return;}
+    mp.send({c:'build',type});playClick();showStatus('建造'+def.name);return;}
   if(def.ageReq&&ageIdx(currentAge)<ageIdx(def.ageReq)){showStatus('需要'+AGES[def.ageReq].name);return;}
   const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
   if(!vls.length){showStatus('選取村民');return;}
@@ -376,7 +401,7 @@ function startBuild(type){
   const ax=vls.reduce((s,v)=>s+v.x,0)/vls.length,ay=vls.reduce((s,v)=>s+v.y,0)/vls.length;
   const sp=findSpot(ax,ay,def.w,def.h);if(!sp){showStatus('找不到空地');return;}
   spend(def.cost);
-  const b={x:sp.x,y:sp.y,w:def.w,h:def.h,type,hp:1,maxHp:def.hp||200,name:def.name,
+  const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type,hp:1,maxHp:def.hp||200,name:def.name,
     p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'player',
     atk:def.atk||0,rng:def.rng||0,cd:def.cd||0,at:0};
   buildings.push(b);stats.built++;
@@ -416,6 +441,7 @@ function updateAge(dt){
     spawnFx(tc.x+tc.w/2,tc.y+tc.h/2,'#ffd250',24);}}
 function trainVillager(){
   if(!canAfford({food:50})){showStatus('食物不足');return;}
+  if(mp.ready&&mp.role==='guest'){mp.send({c:'vil'});playDrop();showStatus('👤 新村民');return;}
   if(playerCount()>=popCap){showStatus('人口已滿');return;}
   spend({food:50});const c=tcCenter();
   const v=makeUnit(c.x-12+Math.random()*24,c.y+tc.h/2+5,'villager');
@@ -424,6 +450,9 @@ function trainVillager(){
   playDrop();spawnFx(c.x,c.y+tc.h,'#80ff80',10);showStatus('👤 新村民');}
 function trainUnit(type){
   const def=UNIT_DEFS[type];if(!def)return;
+  if(mp.ready&&mp.role==='guest'){
+    if(!canAfford(def.cost)){showStatus('資源不足');return;}
+    mp.send({c:'train',type});playClick();showStatus('⚔️ '+def.name);return;}
   if(def.ageReq&&ageIdx(currentAge)<ageIdx(def.ageReq)){showStatus('需要'+AGES[def.ageReq].name);return;}
   if(!selectedBldg||(selectedBldg.type!=='barracks'&&selectedBldg.type!=='castle_bldg')||!selectedBldg.complete){showStatus('選取兵營或城堡');return;}
   if(!canAfford(def.cost)){showStatus('資源不足');return;}
@@ -614,6 +643,8 @@ function spawnProj(o){ // {x,y,h0,type,tx,ty,target?,dmg,team,splash?}
   const sp=o.type==='arrow'?620:300;
   projs.push({...o,mesh,t:0,dur:d/sp,sx:o.x,sy:o.y,
     arc:o.type==='arrow'?Math.min(2.2,d/150):Math.max(3,d/40)});
+  if(mp.ready&&mp.role==='host'&&o.team!=='fx')
+    mp.send({c:'proj',x:o.x,y:o.y,h0:o.h0,t2:o.type,tx:o.tx,ty:o.ty});
 }
 function dealDamage(t,dmg,fromTeam){
   if(!t||t.hp===undefined||t.hp<=0)return;
@@ -705,8 +736,8 @@ function proj(wx,wy,h=0){_v3.set(wx/S,h,wy/S).project(camera);
 // ---- 行動裝置 ----
 const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||window.innerWidth<768;
 if(isMobile){camDist=110;updateCamera();}
-function selectAllVils(){units.forEach(u=>{u.sel=u.team==='player'&&u.type==='villager'?1:0;});selectedBldg=null;showStatus('全選村民');}
-function selectAllMil(){units.forEach(u=>{u.sel=u.team==='player'&&u.type!=='villager'?1:0;});selectedBldg=null;showStatus('全選士兵');}
+function selectAllVils(){units.forEach(u=>{u.sel=u.team===MYTEAM&&u.type==='villager'?1:0;});selectedBldg=null;showStatus('全選村民');}
+function selectAllMil(){units.forEach(u=>{u.sel=u.team===MYTEAM&&u.type!=='villager'?1:0;});selectedBldg=null;showStatus('全選士兵');}
 function escAction(){units.forEach(u=>u.sel=0);selectedBldg=null;showStatus('取消');}
 window.selectAllVils=selectAllVils;window.selectAllMil=selectAllMil;window.escAction=escAction;
 window.startBuild=startBuild;window.trainVillager=trainVillager;window.trainUnit=trainUnit;
@@ -764,17 +795,25 @@ canvas.addEventListener('touchend',e=>{
 let mouseDown=null,bxSel=0,bxR=null,dragM=0;
 const grps={};for(let i=1;i<=9;i++)grps[i]=[];
 let lastGrpTap={};
-function findEnemyAt(wx,wy){
-  const u=units.find(u=>u.team==='enemy'&&u.hp>0&&Math.hypot(u.x-wx,u.y-wy)<(u.sz||20)+8);
+function findEnemyAt(wx,wy,team=MYTEAM){
+  const foe=team==='player'?'enemy':'player';
+  const u=units.find(u=>u.team===foe&&u.hp>0&&Math.hypot(u.x-wx,u.y-wy)<(u.sz||20)+8);
   if(u)return u;
-  if(etc.hp>0&&wx>=etc.x-10&&wx<=etc.x+etc.w+10&&wy>=etc.y-10&&wy<=etc.y+etc.h+10)return etc;
+  const ftc=team==='player'?etc:tc;
+  if(ftc.hp>0&&wx>=ftc.x-10&&wx<=ftc.x+ftc.w+10&&wy>=ftc.y-10&&wy<=ftc.y+ftc.h+10)return ftc;
   return null;
 }
 function edgeOf(t,v){const d=Math.hypot(t.x-v.x,t.y-v.y)||.001;return{x:t.x+(v.x-t.x)/d*(t.r+18),y:t.y+(v.y-t.y)/d*(t.r+18)};}
-function issueCmd(wx,wy){
-  const sel=selected();if(!sel.length)return;selectedBldg=null;
-  const he=findEnemyAt(wx,wy);
-  const vils=sel.filter(u=>u.type==='villager'&&u.team==='player');
+function issueCmd(wx,wy,list){
+  const sel=list||selected();if(!sel.length)return;
+  if(!list)selectedBldg=null;
+  // 多人 guest：指令送俾主機執行
+  if(!list&&mp.ready&&mp.role==='guest'){
+    mp.send({c:'cmd',ids:sel.map(u=>u.i),x:Math.round(wx),y:Math.round(wy)});
+    playClick();spawnFx(wx,wy,'#ffd250',6);return;}
+  const team=sel[0].team;
+  const he=findEnemyAt(wx,wy,team);
+  const vils=sel.filter(u=>u.type==='villager');
   if(he){sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=he;u.state='chase';u.path=null;});
     showStatus('攻擊！');playClick();spawnFx(wx,wy,'#ff4040',8);return;}
   const ht=trees.find(t=>t.res>0&&Math.hypot(t.x-wx,t.y-wy)<t.r+12);
@@ -789,7 +828,7 @@ function issueCmd(wx,wy){
       const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;});showStatus(vils.length>1?`${vils.length}人採集`:'採集');playClick();spawnFx(wx,wy,'#80ff80',6);return;}
   sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=null;u.state='moving';});
   sel.forEach((u,i)=>{const r=Math.floor(i/4),c=i%4;u.tx=wx+(c-1.5)*25;u.ty=wy+r*25;u.path=null;});
-  sel.filter(u=>u.team==='player'&&u.type!=='villager').forEach(u=>{
+  sel.filter(u=>u.type!=='villager').forEach(u=>{
     u.path=aStar(u.x,u.y,wx,wy);u.pi=0;});
   playClick();spawnFx(wx,wy,'#ffd250',6);}
 canvas.addEventListener('mousedown',e=>{if(e.button!==0)return;
@@ -801,24 +840,25 @@ addEventListener('mousemove',e=>{if(!mouseDown)return;
 addEventListener('mouseup',e=>{if(e.button!==0||!mouseDown)return;
   if(e.clientY>innerHeight-76){mouseDown=null;bxSel=0;bxR=null;dragM=0;return;}
   const w=sw(e.clientX,e.clientY);
+  const myTC=MYTEAM==='player'?tc:etc;
   if(bxSel&&bxR){const mnX=Math.min(bxR.x1,bxR.x2),mxX=Math.max(bxR.x1,bxR.x2),mnY=Math.min(bxR.y1,bxR.y2),mxY=Math.max(bxR.y1,bxR.y2);
-    const ht=units.filter(u=>{if(u.team!=='player')return 0;const p=proj(u.x,u.y,1);
+    const ht=units.filter(u=>{if(u.team!==MYTEAM)return 0;const p=proj(u.x,u.y,1);
       return p.vis&&p.x>=mnX&&p.x<=mxX&&p.y>=mnY&&p.y<=mxY;});
     if(ht.length){units.forEach(u=>u.sel=0);selectedBldg=null;ht.forEach(u=>u.sel=1);
       showStatus(`已選 ${ht.length}人（${ht.filter(u=>u.type==='villager').length}村民）`);}}
-  else if(!dragM){const hu=units.find(u=>u.team==='player'&&Math.hypot(u.x-w.x,u.y-w.y)<(u.sz||20));
+  else if(!dragM){const hu=units.find(u=>u.team===MYTEAM&&Math.hypot(u.x-w.x,u.y-w.y)<(u.sz||20));
     const any=selected().length>0;
     if(hu){units.forEach(u=>u.sel=0);selectedBldg=null;hu.sel=1;
       const nn=UNIT_DEFS[hu.type]?UNIT_DEFS[hu.type].name:'村民';
       showStatus('選取'+nn);}
-    else if(any){const th=w.x>=tc.x&&w.x<=tc.x+tc.w&&w.y>=tc.y&&w.y<=tc.y+tc.h;
-      const hb=buildings.find(b=>b.complete&&b.team==='player'&&w.x>=b.x&&w.x<=b.x+b.w&&w.y>=b.y&&w.y<=b.y+b.h);
+    else if(any){const th=w.x>=myTC.x&&w.x<=myTC.x+myTC.w&&w.y>=myTC.y&&w.y<=myTC.y+myTC.h;
+      const hb=buildings.find(b=>b.complete&&b.team===MYTEAM&&w.x>=b.x&&w.x<=b.x+b.w&&w.y>=b.y&&w.y<=b.y+b.h);
       if(th){units.forEach(u=>u.sel=0);selectedBldg={type:'tc',name:'主堡'};showStatus('主堡');}
       else if(hb){units.forEach(u=>u.sel=0);selectedBldg=hb;showStatus(hb.name);}
       else issueCmd(w.x,w.y);}
     else{units.forEach(u=>u.sel=0);
-      const th=w.x>=tc.x&&w.x<=tc.x+tc.w&&w.y>=tc.y&&w.y<=tc.y+tc.h;
-      const hb=buildings.find(b=>b.complete&&b.team==='player'&&w.x>=b.x&&w.x<=b.x+b.w&&w.y>=b.y&&w.y<=b.y+b.h);
+      const th=w.x>=myTC.x&&w.x<=myTC.x+myTC.w&&w.y>=myTC.y&&w.y<=myTC.y+myTC.h;
+      const hb=buildings.find(b=>b.complete&&b.team===MYTEAM&&w.x>=b.x&&w.x<=b.x+b.w&&w.y>=b.y&&w.y<=b.y+b.h);
       if(th){selectedBldg={type:'tc',name:'主堡'};showStatus('主堡');}
       else if(hb){selectedBldg=hb;showStatus(hb.name);}
       else selectedBldg=null;}
@@ -834,14 +874,14 @@ document.getElementById('minimap').addEventListener('click',e=>{const r=mc.getBo
 // ---- 鍵盤 ----
 const keys={};
 addEventListener('keydown',e=>{keys[e.key]=1;
-  if(e.key==='a'||e.key==='A'){selectedBldg=null;units.forEach(u=>{if(u.team==='player'&&u.type==='villager')u.sel=1;});
-    showStatus(`全選 ${units.filter(u=>u.team==='player'&&u.type==='villager').length}村民`);}
-  if(e.key==='b'||e.key==='B'){const v=units.filter(u=>u.team==='player'&&u.type==='villager'&&u.sel);
+  if(e.key==='a'||e.key==='A'){selectedBldg=null;units.forEach(u=>{if(u.team===MYTEAM&&u.type==='villager')u.sel=1;});
+    showStatus(`全選 ${units.filter(u=>u.team===MYTEAM&&u.type==='villager').length}村民`);}
+  if(e.key==='b'||e.key==='B'){const v=units.filter(u=>u.team===MYTEAM&&u.type==='villager'&&u.sel);
     if(v.length&&wood>=30)startBuild('house');else if(v.length)showStatus('木頭不足');else showStatus('先選村民');}
   if(e.key==='Escape'){units.forEach(u=>u.sel=0);selectedBldg=null;showStatus('取消');}
   const n=parseInt(e.key);if(n>=1&&n<=9){
     if(e.ctrlKey||e.metaKey){
-      grps[n]=selected().filter(u=>u.team==='player');showStatus(`編隊 ${n}`);
+      grps[n]=selected().filter(u=>u.team===MYTEAM);showStatus(`編隊 ${n}`);
     }else{units.forEach(u=>u.sel=0);selectedBldg=null;
       grps[n].forEach(u=>{if(u.hp>0)u.sel=1;});
       const t=lastGrpTap[n];const now=performance.now();
@@ -1008,10 +1048,10 @@ function enemyAI(dt){
     if(v.ca>=v.cm&&v.state==='gathering'){const c=tcCenter(etc);v.tx=c.x;v.ty=c.y;v.state='returning';}
   }
   if(!hasHouse&&eWood>=30&&eUnits.length<ePopCap){const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60,76,66);
-    if(sp){eWood-=30;const b={x:sp.x,y:sp.y,w:76,h:66,type:'house',hp:1,maxHp:200,name:'房屋',p:0,bt:5,complete:0,pb:5,team:'enemy'};
+    if(sp){eWood-=30;const b={id:uid++,x:sp.x,y:sp.y,w:76,h:66,type:'house',hp:1,maxHp:200,name:'房屋',p:0,bt:5,complete:0,pb:5,team:'enemy'};
       buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
   if(!hasBarracks&&eWood>=50&&eFood>=20){const sp=findSpot(etc.x-40+Math.random()*80,etc.y-80,86,78);
-    if(sp){eWood-=50;eFood-=20;const b={x:sp.x,y:sp.y,w:86,h:78,type:'barracks',hp:1,maxHp:400,name:'兵營',p:0,bt:8,complete:0,pb:0,team:'enemy'};
+    if(sp){eWood-=50;eFood-=20;const b={id:uid++,x:sp.x,y:sp.y,w:86,h:78,type:'barracks',hp:1,maxHp:400,name:'兵營',p:0,bt:8,complete:0,pb:0,team:'enemy'};
       buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
   if(hasBarracks&&eMil.length<8&&eUnits.length<ePopCap){
     const dsT=dsDecision&&dsDecision.train;
@@ -1065,17 +1105,19 @@ function update(dt){
     units.splice(i,1);upPop();}}
   for(const v of units){if(v.state==='building'&&v.tBldg&&v.tBldg.complete){v.state='idle';v.tBldg=null;}}
   units.forEach(v=>{updateVil(v,dt);updateCombat(v,dt);});
-  gameTime+=dt;updateTowers(dt);enemyAI(dt);updateAge(dt);updateProjs(dt);
+  gameTime+=dt;updateTowers(dt);if(!mp.ready)enemyAI(dt);updateAge(dt);updateProjs(dt);
   for(const u of units){
     if(u.team==='player'&&u.hp>0&&u.hp<u.mh){
       const healR=techs.heal.done?10:5;
       if(Math.hypot(u.x-(tc.x+50),u.y-(tc.y+50))<120)u.hp=Math.min(u.mh,u.hp+healR*dt);}}
   if(researchQueue){const t=techs[researchQueue];t.rt+=dt;if(t.rt>=t.rtime){const k=researchQueue;t.done=true;researchQueue=null;applyTech(k);showStatus('✅ '+t.name+'完成！');playDrop();}}
-  waveTimer-=dt;
-  if(waveTimer<=0){spawnWave();waveTimer=WAVE_INTERVAL;}
-  const wPct=Math.max(0,1-waveTimer/(waveNum===0?180:WAVE_INTERVAL));
-  waveFgEl.style.width=(wPct*100).toFixed(1)+'%';
-  const ws=Math.max(0,Math.floor(waveTimer));waveEtaEl.textContent=Math.floor(ws/60)+':'+(ws%60<10?'0':'')+(ws%60);
+  if(!mp.ready){
+    waveTimer-=dt;
+    if(waveTimer<=0){spawnWave();waveTimer=WAVE_INTERVAL;}
+    const wPct=Math.max(0,1-waveTimer/(waveNum===0?180:WAVE_INTERVAL));
+    waveFgEl.style.width=(wPct*100).toFixed(1)+'%';
+    const ws=Math.max(0,Math.floor(waveTimer));waveEtaEl.textContent=Math.floor(ws/60)+':'+(ws%60<10?'0':'')+(ws%60);
+  }
   if(dsEnabled){dsTimer+=dt;if(dsTimer>DS_INTERVAL){dsTimer=0;callDeepSeek();}}
   if(tc.hp<=0)endGame(false);
   if(etc.hp<=0)endGame(true);
@@ -1083,9 +1125,14 @@ function update(dt){
     p.vx*=.82;p.vy*=.82;p.life-=dt*2.5;if(p.life<=0)fx.splice(i,1);}
   if(statusTimer>0){statusTimer-=dt;if(statusTimer<=0)statusEl.style.opacity=0;}
   upPop();rdMenu();upIdle();upGrpLabels();camKeys(dt);
-  const remaining=Math.max(0,waveTimer);
-  const m=Math.floor(remaining/60),s2=Math.floor(remaining%60);
-  timerEl.textContent=`⚔️ ${m}:${String(s2).padStart(2,'0')}`;
+  if(mp.ready&&mp.role==='host'){
+    snapAcc+=dt;if(snapAcc>=.12){snapAcc=0;sendSnap();}
+    timerEl.textContent='🌐 對戰中';
+  }else{
+    const remaining=Math.max(0,waveTimer);
+    const m=Math.floor(remaining/60),s2=Math.floor(remaining%60);
+    timerEl.textContent=`⚔️ ${m}:${String(s2).padStart(2,'0')}`;
+  }
 }
 // ---- UI ----
 function rdMenu(){
@@ -1095,7 +1142,8 @@ function rdMenu(){
   gm.style.display='flex';
   const hideAll=()=>['btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3'].forEach(id=>show(id,0));
   const ai=ageIdx(currentAge);
-  const vs=sel.filter(u=>u.type==='villager'&&u.team==='player');
+  const isGuest=mp.ready&&mp.role==='guest';
+  const vs=sel.filter(u=>u.type==='villager'&&u.team===MYTEAM);
   if(vs.length>0){
     hideAll();show('bmenuLabel',0);
     en('btnHouse',canAfford(BUILD_DEFS.house.cost));show('btnHouse',1);
@@ -1107,7 +1155,8 @@ function rdMenu(){
     if(ai>=2){en('btnCastle',canAfford(BUILD_DEFS.castle_bldg.cost));show('btnCastle',1);}
   }else if(selectedBldg&&selectedBldg.type==='tc'){
     hideAll();show('bmenuLabel',1).textContent='🏰主堡';
-    en('btnTrainVil',food>=50&&playerCount()<popCap);show('btnTrainVil',1);
+    en('btnTrainVil',food>=50&&(isGuest||playerCount()<popCap));show('btnTrainVil',1);
+    if(isGuest){gm.style.display='flex';return;} // guest 暫無科技/時代
     const rq=researchQueue;
     en('btnT1',!techs.lumber.done&&!rq&&canAfford(techs.lumber.cost));show('btnT1',!techs.lumber.done);
     en('btnT2',!techs.military.done&&!rq&&canAfford(techs.military.cost));show('btnT2',!techs.military.done);
@@ -1123,17 +1172,18 @@ function rdMenu(){
     }else if(ageUpgrading){
       show('bmenuLabel',1).textContent=`⬆️ 升級中 ${ageUpPctEl.textContent}`;
     }
-  }else if(selectedBldg&&(selectedBldg.type==='barracks'||selectedBldg.type==='castle_bldg')&&selectedBldg.complete&&selectedBldg.team==='player'){
+  }else if(selectedBldg&&(selectedBldg.type==='barracks'||selectedBldg.type==='castle_bldg')&&selectedBldg.complete&&selectedBldg.team===MYTEAM){
     hideAll();const isCastle=selectedBldg.type==='castle_bldg';
     show('bmenuLabel',1).textContent=isCastle?'🏰城堡':'⚔️兵營';
-    en('btnSword',canAfford(UNIT_DEFS.swordsman.cost)&&playerCount()<popCap);show('btnSword',1);
-    en('btnSpear',canAfford(UNIT_DEFS.spearman.cost)&&playerCount()<popCap);show('btnSpear',1);
-    en('btnArch',canAfford(UNIT_DEFS.archer.cost)&&playerCount()<popCap);show('btnArch',1);
-    if(ai>=1){en('btnHorse',canAfford(UNIT_DEFS.horseman.cost)&&playerCount()<popCap);show('btnHorse',1);}
-    if(ai>=1){en('btnCata',canAfford(UNIT_DEFS.catapult.cost)&&playerCount()<popCap);show('btnCata',1);}
-    if(ai>=2){en('btnKnight',canAfford(UNIT_DEFS.knight.cost)&&playerCount()<popCap);show('btnKnight',1);}
-    if(ai>=2){en('btnMassArm',canAfford(UNIT_DEFS.mass_archer.cost)&&playerCount()<popCap);show('btnMassArm',1);}
-  }else if(selectedBldg&&selectedBldg.type==='blacksmith'&&selectedBldg.complete&&selectedBldg.team==='player'){
+    const room=isGuest||playerCount()<popCap;
+    en('btnSword',canAfford(UNIT_DEFS.swordsman.cost)&&room);show('btnSword',1);
+    en('btnSpear',canAfford(UNIT_DEFS.spearman.cost)&&room);show('btnSpear',1);
+    en('btnArch',canAfford(UNIT_DEFS.archer.cost)&&room);show('btnArch',1);
+    if(ai>=1||isGuest){en('btnHorse',canAfford(UNIT_DEFS.horseman.cost)&&room);show('btnHorse',1);}
+    if(ai>=1||isGuest){en('btnCata',canAfford(UNIT_DEFS.catapult.cost)&&room);show('btnCata',1);}
+    if(ai>=2||isGuest){en('btnKnight',canAfford(UNIT_DEFS.knight.cost)&&room);show('btnKnight',1);}
+    if(ai>=2||isGuest){en('btnMassArm',canAfford(UNIT_DEFS.mass_archer.cost)&&room);show('btnMassArm',1);}
+  }else if(selectedBldg&&selectedBldg.type==='blacksmith'&&selectedBldg.complete&&selectedBldg.team===MYTEAM&&!isGuest){
     hideAll();show('bmenuLabel',1).textContent='⚒️鍛造廠';
     const rq=researchQueue;
     en('btnBS1',!techs.iron.done&&!rq&&canAfford(techs.iron.cost));show('btnBS1',!techs.iron.done);
@@ -1146,9 +1196,9 @@ function rdMenu(){
     show('bmenuLabel',1).textContent=(icons[selectedBldg.type]||'🏛️')+selectedBldg.name+(selectedBldg.type==='house'?` +${selectedBldg.pb}人口`:'');
   }else{gm.style.display='none';}
 }
-function upIdle(){const idl=units.find(u=>u.team==='player'&&u.type==='villager'&&u.state==='idle'&&!u.sel);
+function upIdle(){const idl=units.find(u=>u.team===MYTEAM&&u.type==='villager'&&u.state==='idle'&&!u.sel);
   document.getElementById('idleBtn').style.display=idl?'block':'none';}
-window.gotoIdleVil=()=>{const idl=units.find(u=>u.team==='player'&&u.type==='villager'&&u.state==='idle');
+window.gotoIdleVil=()=>{const idl=units.find(u=>u.team===MYTEAM&&u.type==='villager'&&u.state==='idle');
   if(idl){camT.x=idl.x/S;camT.z=idl.y/S;clampCam();updateCamera();showStatus('🔍閒置村民');}};
 function upGrpLabels(){
   let h='';for(let i=1;i<=9;i++){const g=grps[i].filter(u=>u.hp>0);
@@ -1752,6 +1802,226 @@ function drawMinimap(){
     i===0?mctx.moveTo(px,py):mctx.lineTo(px,py);});
   mctx.closePath();mctx.stroke();
 }
+// ================= 多人對戰（PeerJS P2P，host 權威） =================
+const ST_IDS=['idle','moving','gathering','returning','building','chase','attack','villagerWait'];
+const TYPE_IDS=['villager','swordsman','spearman','archer','horseman','knight','mass_archer','catapult'];
+const BTYPE_IDS=Object.keys(BUILD_DEFS);
+const guestUnits=new Map(),guestBldgs=new Map();
+let snapAcc=0;
+function loadPeerJS(){return new Promise((res,rej)=>{
+  if(window.Peer)return res();
+  const s=document.createElement('script');
+  s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+  s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+window.openLobby=()=>{document.getElementById('lobby').style.display='flex';};
+window.closeLobby=()=>{document.getElementById('lobby').style.display='none';};
+function mpGo(role){ // 接通後共同初始化
+  mp.ready=true;mp.role=role;
+  if(role==='guest'){MYTEAM='enemy';
+    camT.x=(etc.x+50)/S;camT.z=(etc.y+150)/S;clampCam();updateCamera();}
+  window.closeLobby();mpStart();
+  if(role==='host'){
+    // 紅方開局：同藍方一樣 — 100木 80食 + 3個村民
+    eWood=100;eFood=80;eStone=0;eGold=0;
+    for(let i=0;i<3;i++){
+      const v=makeUnit(etc.x+etc.w/2-30+i*30,etc.y+etc.h+30,'villager','enemy');
+      units.push(v);}
+    sendInit();showStatus('🌐 對手已加入！開戰！');
+  }else showStatus('🌐 已連線！你係紅方（右邊基地）！');
+}
+// 後備通道：同一部機/同瀏覽器嘅兩個分頁用 BroadcastChannel 直連
+function bcSetup(id,role){
+  if(!window.BroadcastChannel)return;
+  mp.bc=new BroadcastChannel('rts3d-'+id);
+  mp.bc.onmessage=ev=>{
+    const m=ev.data;if(!m||m.from===role)return;
+    if(!mp.ready){
+      mp.via='bc';mp.send=d=>mp.bc.postMessage({from:role,d});
+      mpGo(role);
+    }
+    if(mp.via!=='bc')return;
+    if(m.d)role==='host'?hostRecv(m.d):guestRecv(m.d);
+  };
+  if(role==='guest'){
+    mp.helloT=setInterval(()=>{
+      if(mp.ready){clearInterval(mp.helloT);return;}
+      mp.bc.postMessage({from:'guest',d:null});},400);
+  }
+}
+window.mpHost=async()=>{
+  try{await loadPeerJS();}catch(e){showStatus('PeerJS 載入失敗');return;}
+  document.getElementById('lbHostBtn').disabled=true;
+  document.getElementById('lbBody').textContent='開緊房…';
+  mp.peer=new Peer();
+  mp.peer.on('error',e=>{console.log('[MP host] peer error',e.type,e);showStatus('P2P錯誤: '+e.type);});
+  mp.peer.on('open',id=>{
+    console.log('[MP host] open',id);
+    const url=location.origin+location.pathname+'?join='+id;
+    const el=document.getElementById('lbLink');
+    el.textContent=url;el.style.display='block';
+    document.getElementById('lbHint').style.display='block';
+    document.getElementById('lbBody').textContent='房間已開！';
+    if(navigator.clipboard)navigator.clipboard.writeText(url).catch(()=>{});
+    bcSetup(id,'host');
+  });
+  mp.peer.on('connection',c=>{
+    console.log('[MP host] incoming connection');
+    c.on('error',e=>console.log('[MP host] conn error',e));
+    c.on('open',()=>{
+      if(mp.ready)return; // BC 已接通
+      mp.conn=c;mp.via='peer';mp.send=d=>mp.conn.send(d);
+      mpGo('host');});
+    c.on('data',d=>{if(mp.via==='peer')hostRecv(d);});
+    c.on('close',()=>{if(mp.via==='peer'){mp.ready=false;showStatus('⚠️ 對手斷線');}});
+  });
+};
+function mpJoin(id){
+  loadPeerJS().then(()=>{
+    document.getElementById('lbTitle').textContent='加入緊朋友嘅房…';
+    document.getElementById('lbHostBtn').style.display='none';
+    window.openLobby();
+    bcSetup(id,'guest');
+    mp.peer=new Peer();
+    mp.peer.on('error',e=>{console.log('[MP guest] peer error',e.type,e);});
+    mp.peer.on('open',()=>{
+      console.log('[MP guest] peer open, connecting to',id);
+      const c=mp.peer.connect(id,{reliable:true});
+      c.on('error',e=>console.log('[MP guest] conn error',e));
+      c.on('open',()=>{console.log('[MP guest] conn open!');
+        if(mp.ready)return; // BC 已接通
+        mp.conn=c;mp.via='peer';mp.send=d=>mp.conn.send(d);
+        mpGo('guest');});
+      c.on('data',d=>{if(mp.via==='peer')guestRecv(d);});
+      c.on('close',()=>{if(mp.via==='peer'){mp.ready=false;showStatus('⚠️ 主機斷線');}});
+    });
+  }).catch(()=>{showStatus('PeerJS 載入失敗（同機分頁照玩）');bcSetup(id,'guest');});
+}
+function mpStart(){ // 兩邊：清 AI 嘢、隱藏波次條
+  document.getElementById('wavebar').style.display='none';
+  document.getElementById('mpBtn').style.display='none';
+  dsEnabled=false;
+}
+function sendInit(){
+  mp.send({c:'init',
+    trees:trees.map(t=>[Math.round(t.x),Math.round(t.y),t.res]),
+    bushes:bushes.map(b=>[Math.round(b.x),Math.round(b.y),b.res]),
+    stones:stones.map(s=>[Math.round(s.x),Math.round(s.y),s.res]),
+    golds:goldMines.map(g=>[Math.round(g.x),Math.round(g.y),g.res])});
+}
+function sendSnap(){
+  mp.send({c:'snap',
+    u:units.map(u=>[u.i,TYPE_IDS.indexOf(u.type),u.team==='enemy'?1:0,
+      Math.round(u.x),Math.round(u.y),Math.round(u.hp),u.mh,u.mv?1:0,
+      +(u.dir||0).toFixed(2),Math.max(0,ST_IDS.indexOf(u.state)),u.ca||0]),
+    b:buildings.map(b=>[b.id,BTYPE_IDS.indexOf(b.type),b.team==='enemy'?1:0,
+      b.x,b.y,+(Math.min(1,b.p/b.bt)).toFixed(2),b.complete?1:0,Math.round(b.hp),b.maxHp]),
+    tch:Math.round(tc.hp),etch:Math.round(etc.hp),
+    res:[eWood,eFood,eStone,eGold],t:Math.round(gameTime),
+    over:isGameOver?(tc.hp<=0?2:1):0,
+    rs:[trees.map(t=>t.res),bushes.map(b=>b.res),stones.map(s=>s.res),goldMines.map(g=>g.res)]});
+}
+function hostRecv(d){
+  console.log('[MP host] recv',d.c);
+  if(d.c==='cmd'){
+    const ids=new Set(d.ids);
+    const list=units.filter(u=>u.team==='enemy'&&ids.has(u.i));
+    if(list.length)issueCmd(d.x,d.y,list);
+  }else if(d.c==='vil'){
+    if(eFood>=50){eFood-=50;
+      const c2=tcCenter(etc);
+      const v=makeUnit(c2.x-12+Math.random()*24,c2.y+etc.h/2+5,'villager','enemy');
+      v.sp=150;v.tx=c2.x;v.ty=c2.y+etc.h+60;v.state='moving';units.push(v);}
+  }else if(d.c==='train'){
+    const def=UNIT_DEFS[d.type];if(!def)return;
+    const b=buildings.find(b=>b.team==='enemy'&&(b.type==='barracks'||b.type==='castle_bldg')&&b.complete);
+    if(!b)return;const c3=def.cost;
+    if(eFood>=(c3.food||0)&&eWood>=(c3.wood||0)&&eStone>=(c3.stone||0)&&eGold>=(c3.gold||0)){
+      eFood-=c3.food||0;eWood-=c3.wood||0;eStone-=c3.stone||0;eGold-=c3.gold||0;
+      const u=makeUnit(b.x+b.w/2-10+Math.random()*20,b.y+b.h+16,d.type,'enemy');
+      u.tx=b.x+b.w/2;u.ty=b.y+b.h+50;u.state='moving';units.push(u);}
+  }else if(d.c==='build'){
+    const def=BUILD_DEFS[d.type];if(!def)return;
+    const evils=units.filter(u=>u.team==='enemy'&&u.type==='villager');
+    if(!evils.length)return;const c4=def.cost;
+    if(eWood>=(c4.wood||0)&&eFood>=(c4.food||0)&&eStone>=(c4.stone||0)&&eGold>=(c4.gold||0)){
+      const ax=evils.reduce((s,v)=>s+v.x,0)/evils.length,ay=evils.reduce((s,v)=>s+v.y,0)/evils.length;
+      const sp=findSpot(ax,ay,def.w,def.h);if(!sp)return;
+      eWood-=c4.wood||0;eFood-=c4.food||0;eStone-=c4.stone||0;eGold-=c4.gold||0;
+      const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type:d.type,hp:1,maxHp:def.hp||200,name:def.name,
+        p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'enemy',
+        atk:def.atk||0,rng:def.rng||0,cd:def.cd||0,at:0};
+      buildings.push(b);
+      evils.slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;
+        v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}
+  }
+}
+function guestRecv(d){
+  if(d.c==='init'){
+    const rebuild=(arr,data,maker,rr,ty)=>{
+      for(const o of arr)if(o.mesh)scene.remove(o.mesh);
+      arr.length=0;
+      for(const[x,y,res]of data){const o={x,y,r:rr,res,mr:res||1,type:ty,st:0};
+        o.mesh=maker();place(o.mesh,x,y);scene.add(o.mesh);arr.push(o);}};
+    rebuild(trees,d.trees,makeTree,TREE_R,'wood');
+    rebuild(bushes,d.bushes,makeBush,BUSH_R,'food');
+    rebuild(stones,d.stones,makeStone,STONE_R,'stone');
+    rebuild(goldMines,d.golds,makeGoldMine,GOLD_R,'gold');
+    for(const u of units)if(u.mesh)scene.remove(u.mesh);
+    units.length=0;guestUnits.clear();
+    for(const b of buildings)if(b.mesh)scene.remove(b.mesh);
+    buildings.length=0;guestBldgs.clear();
+  }else if(d.c==='snap'){mp.snap=d;}
+  else if(d.c==='proj'){spawnProj({x:d.x,y:d.y,h0:d.h0,type:d.t2,tx:d.tx,ty:d.ty,dmg:0,team:'fx'});}
+}
+function applySnap(){
+  const d=mp.snap;if(!d)return;mp.snap=null;
+  gameTime=d.t;tc.hp=d.tch;etc.hp=d.etch;
+  wood=d.res[0];food=d.res[1];stone=d.res[2];gold=d.res[3];
+  woodEl.textContent=wood;foodEl.textContent=food;stoneEl.textContent=stone;goldEl.textContent=gold;
+  const seen=new Set();
+  for(const[i,ti,tm,x,y,hp,mh,mv,dir,si,ca]of d.u){
+    seen.add(i);let u=guestUnits.get(i);
+    if(!u){const ty=TYPE_IDS[ti];
+      u={i,type:ty,team:tm?'enemy':'player',x,y,tx:x,ty:y,hp,mh,mv:0,dir,state:'idle',
+        sel:0,wt:0,cs:0,ca:0,at:0,cd:1,gt:0,gi:.4,path:null,pi:0,
+        sz:(UNIT_DEFS[ty]||{}).sz||20,hat:HATS[i%HATS.length]};
+      guestUnits.set(i,u);units.push(u);}
+    u.x=x;u.y=y;u.hp=hp;u.mh=mh;u.mv=!!mv;u.dir=dir;u.state=ST_IDS[si]||'idle';u.ca=ca;
+    if(u.mv)u.wt+=.45;
+    if(u.state==='gathering'||u.state==='building')u.cs=(u.cs+.3)%1;
+  }
+  for(let i=units.length-1;i>=0;i--){const u=units[i];
+    if(!seen.has(u.i)){if(u.mesh)scene.remove(u.mesh);guestUnits.delete(u.i);units.splice(i,1);}}
+  const seenB=new Set();
+  for(const[id,bi,tm,x,y,pct,complete,hp,maxHp]of d.b){
+    seenB.add(id);let b=guestBldgs.get(id);
+    if(!b){const ty=BTYPE_IDS[bi],def=BUILD_DEFS[ty];
+      b={id,type:ty,team:tm?'enemy':'player',x,y,w:def.w,h:def.h,name:def.name,
+        p:0,bt:1,complete:0,hp,maxHp,pb:def.pb||0,atk:0,rng:0,cd:0,at:0};
+      guestBldgs.set(id,b);buildings.push(b);}
+    b.p=pct;b.bt=1;b.complete=!!complete;b.hp=hp;b.maxHp=maxHp;
+  }
+  for(let i=buildings.length-1;i>=0;i--){const b=buildings[i];
+    if(!seenB.has(b.id)){if(b.mesh)scene.remove(b.mesh);guestBldgs.delete(b.id);buildings.splice(i,1);}}
+  d.rs[0].forEach((r,i)=>{if(trees[i])trees[i].res=r;});
+  d.rs[1].forEach((r,i)=>{if(bushes[i])bushes[i].res=r;});
+  d.rs[2].forEach((r,i)=>{if(stones[i])stones[i].res=r;});
+  d.rs[3].forEach((r,i)=>{if(goldMines[i])goldMines[i].res=r;});
+  upPop();popCapEl.textContent='∞';
+  if(d.over&&!isGameOver)endGame(d.over===2);
+}
+function guestTick(dt){
+  applySnap();
+  for(let i=fx.length-1;i>=0;i--){const p=fx[i];p.x+=p.vx*dt;p.y+=p.vy*dt;
+    p.vx*=.82;p.vy*=.82;p.life-=dt*2.5;if(p.life<=0)fx.splice(i,1);}
+  updateProjs(dt);
+  if(statusTimer>0){statusTimer-=dt;if(statusTimer<=0)statusEl.style.opacity=0;}
+  rdMenu();upIdle();upGrpLabels();camKeys(dt);
+  timerEl.textContent='🌐 對戰中';
+}
+// URL ?join=xxx 自動入房
+{const jid=new URLSearchParams(location.search).get('join');
+ if(jid)setTimeout(()=>mpJoin(jid),300);}
 // debug handle
 window.__G={units,buildings,trees,bushes,stones,goldMines,sw,camT,issueCmd,selected,
   THREE,camera,groundPlane,ray,ndc,dims:()=>({W,H}),
@@ -1763,7 +2033,7 @@ window.__G={units,buildings,trees,bushes,stones,goldMines,sw,camT,issueCmd,selec
   age:()=>currentAge,tc,etc,techs,AGES,
   setAge:a=>{currentAge=a;ageBadgeEl.textContent=AGES[a].icon+AGES[a].name;},
   setTime:t=>{gameTime=t;},
-  charLib,loadGLB,SkeletonUtils,scene};
+  charLib,loadGLB,SkeletonUtils,scene,mp};
 // ---- 主迴圈 ----
 let last=performance.now();
 function loop(){
@@ -1771,7 +2041,7 @@ function loop(){
   dt=Math.min(dt,.05);
   if(W!==innerWidth||H!==innerHeight)resize();
   updateCamera();
-  update(dt);
+  if(mp.ready&&mp.role==='guest')guestTick(dt);else update(dt);
   updateDayNight();
   syncScene(dt,now);
   renderer.render(scene,camera);
