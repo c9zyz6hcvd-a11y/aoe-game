@@ -322,6 +322,7 @@ const ageUpPctEl=document.getElementById('ageUpPct');
 // ---- 統計 ----
 const stats={kills:0,losses:0,built:0,wavesCleared:0,
   gathered:{wood:0,food:0,stone:0,gold:0},startTime:Date.now()};
+const eStats={kills:0,losses:0,built:0,gathered:{wood:0,food:0,stone:0,gold:0}};
 const woodEl=document.getElementById('wood'),foodEl=document.getElementById('food'),stoneEl=document.getElementById('stone'),
   goldEl=document.getElementById('gold'),
   popEl=document.getElementById('pop'),popCapEl=document.getElementById('popCap'),statusEl=document.getElementById('status'),
@@ -574,7 +575,9 @@ const timeline=[];
 function recordTimeline(){
   const pm=units.filter(u=>u.team==='player'&&u.type!=='villager'&&u.hp>0).length;
   const pv=units.filter(u=>u.team==='player'&&u.type==='villager'&&u.hp>0).length;
-  timeline.push({t:Math.floor(gameTime),w:wood,f:food,s:stone,g:gold,m:pm,v:pv,k:stats.kills,l:stats.losses});
+  const em=units.filter(u=>u.team==='enemy'&&u.type!=='villager'&&u.hp>0).length;
+  const ev=units.filter(u=>u.team==='enemy'&&u.type==='villager'&&u.hp>0).length;
+  timeline.push({t:Math.floor(gameTime),w:wood,f:food,s:stone,g:gold,m:pm,v:pv,k:stats.kills,l:stats.losses,em,ev,ek:eStats.kills,el:eStats.losses});
 }
 function drawTimeline(){
   const c=document.getElementById('tlChart');if(!c||timeline.length<2)return;
@@ -589,7 +592,8 @@ function drawTimeline(){
   ctx.fillText('0',pad-4,pad+gh+3);ctx.fillText(maxT+'s',W2-pad,pad+gh+16);
   // legend
   const series=[{name:'資源',key:['w','f','s','g'],color:'#f4d03f',sum:1},
-    {name:'軍事',key:['m'],color:'#4a90e0',mul:8},{name:'村民',key:['v'],color:'#80e080',mul:5},{name:'擊殺',key:['k'],color:'#e04040',mul:6}];
+    {name:'我軍',key:['m'],color:'#4a90e0',mul:8},{name:'我民',key:['v'],color:'#80d0ff',mul:5},{name:'我殺',key:['k'],color:'#40a0ff',mul:6},
+    {name:'敵軍',key:['em'],color:'#e05050',mul:8},{name:'敵民',key:['ev'],color:'#ff8080',mul:5},{name:'敵殺',key:['el'],color:'#ff4040',mul:6}];
   ctx.font='9px sans-serif';let lx=pad;
   for(const s of series){ctx.fillStyle=s.color;ctx.fillText(s.name,lx,12);lx+=ctx.measureText(s.name).width+16;}
   // draw lines
@@ -621,21 +625,20 @@ function endGame(win){
   if(win)playVictory();else playDefeat();document.getElementById('spIcon').textContent=win?'🏆':'💀';
   document.getElementById('spTitle').textContent=win?'你贏了！':'你輸了！';
   document.getElementById('spSub').textContent=win?`摧毀敵方主堡，歷時 ${timeStr}`:`主堡淪陷，歷時 ${timeStr}`;
-  const rows=[
+  const eb=buildings.filter(b=>b.team==='enemy'&&b.complete).length;
+  document.getElementById('spTable').innerHTML=`<tr><th></th><th style="color:#4a90e0">🔵 我方</th><th style="color:#e05050">🔴 敵方</th></tr>`+[
     ['戰績',`${rec.wins}W / ${rec.losses}L`],
     ['Elo',rec.elo+''],
     ['時代達成',AGES[currentAge].icon+AGES[currentAge].name],
     ['歷時',timeStr],
-    ['波次撐過',stats.wavesCleared+' 波'],
-    ['擊殺敵軍',stats.kills+' 人'],
-    ['損失單位',stats.losses+' 人'],
-    ['建設建築',stats.built+' 座'],
+    ['擊殺',stats.kills+' 人',eStats.kills+' 人'],
+    ['損失',stats.losses+' 人',eStats.losses+' 人'],
+    ['建設',stats.built+' 座',eb+' 座'],
     ['採集木材',stats.gathered.wood],
     ['採集食物',stats.gathered.food],
     ['採集石材',stats.gathered.stone],
     ['採集金礦',stats.gathered.gold],
-  ];
-  document.getElementById('spTable').innerHTML=rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  ].filter(r=>r.length>1).map(([k,v1,v2])=>`<tr><td>${k}</td><td>${v1||'-'}</td><td>${v2||'-'}</td></tr>`).join('');
   sp.style.display='flex';
   drawTimeline();
 }
@@ -882,8 +885,8 @@ function dealDamage(t,dmg,fromTeam){
   if(t.hp<=0){playDeath();spawnFx(cx,cy,'#ff8030',20);
     const isTc=(t===tc||t===etc);
     if(!isTc&&!t.w){
-      if(t.team==='enemy'){stats.kills++;showStatus('殲滅敵軍！');}
-      else{stats.losses++;showStatus('單位陣亡');}}}
+      if(t.team==='enemy'){stats.kills++;eStats.losses++;showStatus('殲滅敵軍！');}
+      else{stats.losses++;eStats.kills++;showStatus('單位陣亡');}}}
 }
 function updateProjs(dt){
   for(let i=projs.length-1;i>=0;i--){const p=projs[i];
