@@ -630,7 +630,7 @@ function endGame(win){
 }
 function tcCenter(t=tc){return{x:t.x+t.w/2,y:t.y+t.h/2};}
 // ---- 地圖資源 ----
-const REGROW={wood:90,food:75,stone:120,gold:150}; // 重生時間(秒)
+const REGROW={wood:72,food:60,stone:96,gold:120}; // 重生時間(秒)
 const TREE_R=22;const trees=[];
 (function(){const zs=[[tc.x+180,tc.y-180,480,380],[tc.x+360,tc.y+130,380,320],[100,100,580,580],[WORLD.w-700,100,580,680],[100,WORLD.h-700,680,580],[WORLD.w-600,WORLD.h-600,480,480],[WORLD.w/2-80,80,380,380]];
   for(const[bx,by,bw,bh]of zs){for(let i=0;i<4+Math.random()*4;i++){let ok=0,x,y,t=0;
@@ -677,7 +677,7 @@ function makeUnit(x,y,type,team='player'){
   const i=uid++;let o;
   if(type==='villager'){
     o={x,y,tx:x,ty:y,sp:150,wt:0,mv:0,type:'villager',team,state:'idle',
-      tRes:null,gType:null,ca:0,cm:15,gt:0,gi:.4,cs:0,tBldg:null,sel:0,i,
+      tRes:null,gType:null,ca:0,cm:20,gt:0,gi:.4,cs:0,tBldg:null,sel:0,i,
       hp:40,mh:40,atk:3,tEn:null,rng:22,cd:1.2,at:0,path:null,pi:0,
       hat:HATS[i%HATS.length],aMove:false,patrol:false,patrolDestX:x,patrolDestY:y};
   }else{const d=UNIT_DEFS[type];
@@ -1188,6 +1188,7 @@ function updateVil(v,dt){
     if(!b.complete){b.p+=dt;v.cs=Math.sin(performance.now()/200)*.5+.5;
       if(b.p>=b.bt){b.complete=1;b.hp=b.maxHp;
         if(b.type==='house'||b.pb){if(b.team==='player')popCap+=b.pb;}
+        if(b.type==='mill'&&b.complete){for(const uu of units){if(uu.type==='villager'&&uu.team===b.team)uu.gi=Math.max(.22,uu.gi*.9);}}
         playBuildDone();playDrop();spawnFx(b.x+b.w/2,b.y+b.h/2,'#ffd250',16);showStatus(b.name+'完成！');
         v.state='idle';v.tBldg=null;}}
     else{v.state='idle';v.tBldg=null;}
