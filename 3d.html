@@ -308,6 +308,17 @@ const techs={
   range:   {name:'長弓術',  cost:{food:60,gold:50},           done:false,rt:0,rtime:20,bldgReq:'blacksmith'},
 };
 let researchQueue=null;
+function cloneTechs(){return{
+  lumber:  {name:'伐木效率',cost:{wood:50,food:30},          done:false,rt:0,rtime:20,bldgReq:null},
+  military:{name:'軍事訓練',cost:{food:60,wood:20},           done:false,rt:0,rtime:20,bldgReq:null},
+  speed:   {name:'行軍速度',cost:{food:50},                   done:false,rt:0,rtime:15,bldgReq:null},
+  heal:    {name:'急救術',  cost:{food:40,stone:20},          done:false,rt:0,rtime:12,bldgReq:null},
+  iron:    {name:'鐵器鍛造',cost:{wood:100,gold:75},          done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
+  shield:  {name:'強化盔甲',cost:{wood:75,gold:50},           done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
+  range:   {name:'長弓術',  cost:{food:60,gold:50},           done:false,rt:0,rtime:20,bldgReq:'blacksmith'},
+};}
+const eTechs=cloneTechs();let eResearchQueue=null;
+let eCurrentAge='dark',eAgeUpgrading=false,eAgeTimer=0;
 // ---- DeepSeek AI ----
 let dsKey='', dsEnabled=false, dsThinking=false, dsDecision=null, dsTimer=0;
 const DS_INTERVAL=12;
@@ -421,6 +432,12 @@ function canAdvanceAge(){
   return missing.length===0;
 }
 function advanceAge(){
+  if(mp.ready&&mp.role==='guest'){
+    const a=AGES[eCurrentAge];if(!a.next)return;
+    if(!canAfford(a.cost)){showStatus('資源不足');return;}
+    const missing=a.reqBldg.filter(bt=>!buildings.some(b=>b.type===bt&&b.complete&&b.team===MYTEAM));
+    if(missing.length){showStatus('需要先蓋：'+missing.map(bt=>BUILD_DEFS[bt].name).join('、'));return;}
+    mp.send({c:'age'});playClick();showStatus('⬆️ 升級時代中…');return;}
   if(!canAdvanceAge()){
     const a=AGES[currentAge];
     const missing=a.reqBldg.filter(bt=>!buildings.some(b=>b.type===bt&&b.complete&&b.team==='player'));
@@ -438,7 +455,11 @@ function updateAge(dt){
     const a=AGES[currentAge];
     ageBadgeEl.textContent=a.icon+a.name;
     showStatus('🎉 進入'+a.name+'！');playDrop();
-    spawnFx(tc.x+tc.w/2,tc.y+tc.h/2,'#ffd250',24);}}
+    spawnFx(tc.x+tc.w/2,tc.y+tc.h/2,'#ffd250',24);}
+  // 敵方時代升級（主機側處理）
+  if(eAgeUpgrading){
+    const ert=AGES[eCurrentAge].resTime;eAgeTimer+=dt;
+    if(eAgeTimer>=ert){eAgeUpgrading=false;eAgeTimer=0;eCurrentAge=AGES[eCurrentAge].next;}}}
 function trainVillager(){
   if(!canAfford({food:50})){showStatus('食物不足');return;}
   if(mp.ready&&mp.role==='guest'){mp.send({c:'vil'});playDrop();showStatus('👤 新村民');return;}
@@ -463,6 +484,11 @@ function trainUnit(type){
   u.state='moving';units.push(u);upPop();stats.built++;
   playClick();spawnFx(u.x,u.y,'#80c0ff',10);showStatus('⚔️ '+def.name);}
 function doResearch(key){
+  if(mp.ready&&mp.role==='guest'){
+    const t=eTechs[key];if(!t||t.done)return;
+    if(eResearchQueue){showStatus('研究中…');return;}
+    if(!canAfford(t.cost)){showStatus('資源不足');return;}
+    mp.send({c:'research',key});playClick();showStatus('🔬 研究：'+t.name);return;}
   const t=techs[key];if(!t||t.done)return;
   if(researchQueue){showStatus('研究中…');return;}
   if(t.bldgReq&&!buildings.some(b=>b.type===t.bldgReq&&b.complete&&b.team==='player')){
@@ -540,11 +566,12 @@ function makeUnit(x,y,type,team='player'){
     o={x,y,tx:x,ty:y,sp:150,wt:0,mv:0,type:'villager',team,state:'idle',
       tRes:null,gType:null,ca:0,cm:15,gt:0,gi:.4,cs:0,tBldg:null,sel:0,i,
       hp:40,mh:40,atk:3,tEn:null,rng:22,cd:1.2,at:0,path:null,pi:0,
-      hat:HATS[i%HATS.length]};
+      hat:HATS[i%HATS.length],aMove:false,patrol:false,patrolDestX:x,patrolDestY:y};
   }else{const d=UNIT_DEFS[type];
     o={x,y,tx:x,ty:y,sp:d.sp,wt:0,mv:0,type,team,state:'idle',sel:0,i,
       hp:d.hp,mh:d.hp,atk:d.atk,rng:d.rng,cd:d.cd,at:0,tEn:null,sz:d.sz,
-      bonus:d.bonus||null,path:null,pi:0,patrolX:x,patrolY:y};}
+      bonus:d.bonus||null,path:null,pi:0,patrolX:x,patrolY:y,
+      aMove:false,patrol:false,patrolDestX:x,patrolDestY:y};}
   return o;
 }
 const eSpawns=[{type:'swordsman',dx:-200,dy:-60},{type:'swordsman',dx:-160,dy:10},{type:'swordsman',dx:-240,dy:40},{type:'archer',dx:-120,dy:-30},{type:'horseman',dx:-280,dy:-10}];
@@ -828,8 +855,10 @@ function issueCmd(wx,wy,list){
       const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;});showStatus(vils.length>1?`${vils.length}人採集`:'採集');playClick();spawnFx(wx,wy,'#80ff80',6);return;}
   sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=null;u.state='moving';});
   sel.forEach((u,i)=>{const r=Math.floor(i/4),c=i%4;u.tx=wx+(c-1.5)*25;u.ty=wy+r*25;u.path=null;});
+  // A-Move: 軍事單位移動中自動接敵
   sel.filter(u=>u.type!=='villager').forEach(u=>{
-    u.path=aStar(u.x,u.y,wx,wy);u.pi=0;});
+    u.path=aStar(u.x,u.y,wx,wy);u.pi=0;
+    u.aMove=true;u.aMoveX=wx;u.aMoveY=wy;});
   playClick();spawnFx(wx,wy,'#ffd250',6);}
 canvas.addEventListener('mousedown',e=>{if(e.button!==0)return;
   if(e.clientY>innerHeight-72&&e.clientY<innerHeight)return;
@@ -879,6 +908,10 @@ addEventListener('keydown',e=>{keys[e.key]=1;
   if(e.key==='b'||e.key==='B'){const v=units.filter(u=>u.team===MYTEAM&&u.type==='villager'&&u.sel);
     if(v.length&&wood>=30)startBuild('house');else if(v.length)showStatus('木頭不足');else showStatus('先選村民');}
   if(e.key==='Escape'){units.forEach(u=>u.sel=0);selectedBldg=null;showStatus('取消');}
+  if(e.key==='p'||e.key==='P'){const sm=selected().filter(u=>u.type!=='villager'&&u.team===MYTEAM);
+    if(sm.length){sm.forEach(u=>{u.patrol=true;u.patrolX=u.x;u.patrolY=u.y;u.patrolDestX=u.x+200;u.patrolDestY=u.y;
+      u.state='moving';u.tx=u.patrolDestX;u.ty=u.patrolDestY;u.tEn=null;});
+    showStatus(`🔄 ${sm.length}人巡邏模式`);}}
   const n=parseInt(e.key);if(n>=1&&n<=9){
     if(e.ctrlKey||e.metaKey){
       grps[n]=selected().filter(u=>u.team===MYTEAM);showStatus(`編隊 ${n}`);
@@ -962,6 +995,26 @@ function updateVil(v,dt){
 }
 function updateCombat(v,dt){
   if(v.hp<=0)return;
+  const foe=v.team==='player'?'enemy':'player';
+  // A-Move: 移動中掃敵, 見到就打
+  if(v.aMove&&v.state==='moving'&&v.type!=='villager'){
+    const near=units.find(u=>u.team===foe&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<v.rng*1.4);
+    if(near){v.tEn=near;v.state='chase';v.aMove=false;v.tx=near.x;v.ty=near.y;v.path=null;}
+  }
+  // A-Move: 打完繼續行去目的地
+  if(v.aMove&&v.state==='idle'&&!v.tEn){
+    v.tx=v.aMoveX;v.ty=v.aMoveY;v.state='moving';v.tEn=null;v.tRes=null;}
+  // Patrol: 到站就掉頭
+  if(v.patrol&&v.state==='moving'&&Math.hypot(v.x-v.patrolX,v.y-v.patrolY)<30){
+    [v.patrolX,v.patrolDestX]=[v.patrolDestX,v.patrolX];[v.patrolY,v.patrolDestY]=[v.patrolDestY,v.patrolY];
+    v.tx=v.patrolX;v.ty=v.patrolY;}
+  // Patrol: 巡邏途中自動接敵
+  if(v.patrol&&v.state==='moving'&&v.type!=='villager'){
+    const near=units.find(u=>u.team===foe&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<v.rng*1.5);
+    if(near){v.tEn=near;v.state='chase';v.path=null;}
+  }
+  // Patrol: 打完返去繼續巡
+  if(v.patrol&&v.state==='idle'&&!v.tEn&&v.type!=='villager'){v.tx=v.patrolX;v.ty=v.patrolY;v.state='moving';}
   if(v.team==='enemy'&&v.state==='idle'&&!v.tEn){
     const px=v.patrolX||v.x,py=v.patrolY||v.y;
     if(Math.hypot(v.x-px,v.y-py)>120){v.tx=px;v.ty=py;v.state='moving';}
@@ -1012,31 +1065,67 @@ function updateTowers(dt){
 }
 // ---- 敵方 AI ----
 let eaiTimer=0;const EAI_INTERVAL=2;
+// ---- 敵方 AI (難度分級) ----
+let aiDiff='normal'; // easy|normal|hard (localStorage)
+try{const d=localStorage.getItem('aiDiff');if(d)aiDiff=d;}catch(e){}
+window.setAiDiff=d=>{aiDiff=d;localStorage.setItem('aiDiff',d);showStatus('AI難度: '+d);};
+const AI_CFG={easy:{iv:2.0,eco:0.7,aggro:0.3,micro:0.4,cheat:0},
+  normal:{iv:1.0,eco:1.0,aggro:0.7,micro:0.7,cheat:0},
+  hard:{iv:0.55,eco:1.3,aggro:1.2,micro:1.0,cheat:0.08}};
 function enemyAI(dt){
-  eaiTimer+=dt;if(eaiTimer<EAI_INTERVAL)return;eaiTimer=0;
-  const eUnits=units.filter(u=>u.team==='enemy');
+  eaiTimer+=dt;const cfg=AI_CFG[aiDiff];if(eaiTimer<EAI_INTERVAL*cfg.iv)return;eaiTimer=0;
+  const eUnits=units.filter(u=>u.team==='enemy'&&u.hp>0);
   const eVils=eUnits.filter(u=>u.type==='villager');
-  const eMil=eUnits.filter(u=>u.type!=='villager'&&u.hp>0);
+  const eMil=eUnits.filter(u=>u.type!=='villager');
   const eBldgs=buildings.filter(b=>b.team==='enemy');
-  const hasBarracks=eBldgs.some(b=>b.type==='barracks'&&b.complete);
-  const hasHouse=eBldgs.some(b=>b.type==='house'&&b.complete);
+  const eVilIds=eVils.filter(v=>v.state==='idle');
   const ePopCap=5+eBldgs.filter(b=>b.type==='house'&&b.complete).reduce((s,b)=>s+(b.pb||5),0);
-  if(eVils.length<3&&eUnits.length<ePopCap&&(eFood>=50||eVils.length===0)){
-    if(eVils.length>0)eFood=Math.max(0,eFood-50);
-    const v=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+10,'villager','enemy');
-    v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;units.push(v);}
-  for(const v of eVils){
-    if(v.state!=='idle')continue;
-    const needWood=eWood<40||!hasHouse||!hasBarracks;const needFood=eFood<60;const needStone=eStone<30;const needGold=eGold<50;
-    if(needWood||!hasHouse){const t=trees.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
+  const pUnits=units.filter(u=>u.team==='player'&&u.hp>0);
+  const pMil=pUnits.filter(u=>u.type!=='villager');
+  const pBldgs=buildings.filter(b=>b.team==='player'&&b.complete);
+  const hasBsk=eBldgs.some(b=>b.type==='barracks'&&b.complete);
+  const hasHouse=eBldgs.some(b=>b.type==='house'&&b.complete);
+  const hasMill=eBldgs.some(b=>b.type==='mill'&&b.complete);
+  const hasBS=eBldgs.some(b=>b.type==='blacksmith'&&b.complete);
+  const hasTower=eBldgs.some(b=>b.type==='tower'&&b.complete);
+  const eAge=ageIdx(eCurrentAge);
+  // cheat resource boost (Hard only)
+  if(cfg.cheat>0&&Math.random()<cfg.cheat){eWood+=2;eFood+=2;eStone+=1;eGold+=1;}
+  // === Phase 1: 爆經濟 (train villagers) ===
+  const wantVils=Math.min(14+cfg.eco*4,ePopCap);
+  if(eVils.length<wantVils&&eUnits.length<ePopCap&&eFood>=50){
+    eFood-=50;const v=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+10,'villager','enemy');
+    v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;units.push(v);
+    if(eVils.length===0)eFood+=50;}// 第一個村民免費(安全網)
+  // === Phase 2: 建屋順序 ===
+  const buildIf=(cond,type,costCheck)=>{
+    if(!cond)return;const def=BUILD_DEFS[type];
+    if(!costCheck(def))return;
+    const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60-Math.random()*80,def.w,def.h);
+    if(!sp)return;eWood-=(def.cost.wood||0);eFood-=(def.cost.food||0);eStone-=(def.cost.stone||0);eGold-=(def.cost.gold||0);
+    const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type,hp:1,maxHp:def.hp||200,name:def.name,p:0,bt:def.bt,complete:0,pb:def.pb||0,team:'enemy'};
+    buildings.push(b);eVils.sort((a,b)=>Math.hypot(a.x-sp.x,a.y-sp.y)-Math.hypot(b.x-sp.x,b.y-sp.y)).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});};
+  buildIf((eUnits.length>=ePopCap-1||eVils.length>=6)&&!hasHouse,'house',d=>eWood>=d.cost.wood);
+  buildIf(!hasMill&&hasHouse,'mill',d=>eWood>=d.cost.wood&&eFood>=d.cost.food);
+  buildIf(!hasBsk&&hasHouse,'barracks',d=>eWood>=d.cost.wood&&eFood>=d.cost.food);
+  buildIf(hasBsk&&!hasBS&&eMil.length>=3,'blacksmith',d=>eWood>=d.cost.wood&&eGold>=d.cost.gold);
+  buildIf(!hasTower&&hasBsk&&eMil.length>=4&&eAge>=1,'tower',d=>eWood>=d.cost.wood&&eStone>=d.cost.stone);
+  // === Phase 3: 資源調度 ===
+  for(const v of eVilIds){
+    const wantWood=eWood<80||!hasBsk||eUnits.length>=ePopCap;
+    const wantFood=eFood<100||eVils.length<wantVils;
+    const wantGold=eGold<60&&hasBS&&eAge>=1;
+    const wantStone=eStone<50&&hasBsk&&eAge>=1;
+    if(wantWood&&trees.some(t=>t.res>0)){const t=trees.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='wood';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
-    if(needFood){const t=bushes.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
+    if(wantFood&&bushes.some(b=>b.res>0)){const t=bushes.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='food';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
-    if(needStone){const t=stones.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
-      if(t){v.tRes=t;v.gType='stone';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
-    if(needGold){const t=goldMines.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
+    if(wantGold&&goldMines.some(g=>g.res>0)){const t=goldMines.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='gold';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
+    if(wantStone&&stones.some(s=>s.res>0)){const t=stones.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
+      if(t){v.tRes=t;v.gType='stone';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
   }
+  // === Phase 4: 收集返倉 ===
   for(const v of eVils){
     if(!v.mv&&v.state==='returning'){
       if(v.gType==='wood')eWood+=Math.floor(v.ca*.5);else if(v.gType==='food')eFood+=Math.floor(v.ca*.5);
@@ -1047,35 +1136,57 @@ function enemyAI(dt){
       else v.state='idle';}
     if(v.ca>=v.cm&&v.state==='gathering'){const c=tcCenter(etc);v.tx=c.x;v.ty=c.y;v.state='returning';}
   }
-  if(!hasHouse&&eWood>=30&&eUnits.length<ePopCap){const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60,76,66);
-    if(sp){eWood-=30;const b={id:uid++,x:sp.x,y:sp.y,w:76,h:66,type:'house',hp:1,maxHp:200,name:'房屋',p:0,bt:5,complete:0,pb:5,team:'enemy'};
-      buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
-  if(!hasBarracks&&eWood>=50&&eFood>=20){const sp=findSpot(etc.x-40+Math.random()*80,etc.y-80,86,78);
-    if(sp){eWood-=50;eFood-=20;const b={id:uid++,x:sp.x,y:sp.y,w:86,h:78,type:'barracks',hp:1,maxHp:400,name:'兵營',p:0,bt:8,complete:0,pb:0,team:'enemy'};
-      buildings.push(b);eVils.sort((a,b)=>a.x-b.x).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}}
-  if(hasBarracks&&eMil.length<8&&eUnits.length<ePopCap){
-    const dsT=dsDecision&&dsDecision.train;
-    const types=dsT&&UNIT_DEFS[dsT]?[dsT]:['swordsman','archer','horseman'];
-    const type=types[Math.floor(Math.random()*types.length)];const d=UNIT_DEFS[type];
-    if(eFood>=(d.cost.food||0)&&eWood>=(d.cost.wood||0)&&eStone>=(d.cost.stone||0)){
-      eFood-=d.cost.food||0;eWood-=d.cost.wood||0;eStone-=d.cost.stone||0;
-      const u=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+30,type,'enemy');
-      u.patrolX=etc.x;u.patrolY=etc.y;units.push(u);upPop();}}
-  const attUnits=eUnits.filter(u=>u.type!=='villager'&&u.hp>0);
-  if(gameTime>=180&&attUnits.length>=2&&Math.random()<.04){
-    const target=units.find(u=>u.team==='player'&&u.hp>0)||tc;
-    const tcx=tc.x+tc.w/2,tcy=tc.y+tc.h/2;
-    attUnits.slice(0,2).forEach(u=>{u.tEn=target;u.state='chase';
-      u.tx=(target===tc)?tcx:(target.x||tcx);u.ty=(target===tc)?tcy:(target.y||tcy);});}
+  // === Phase 5: 時代升級 ===
+  if(!eAgeUpgrading&&eVils.length>=5&&hasMill&&eFood>=400&&eAge<1){ // Dark→Feudal
+    const a=AGES[eCurrentAge];if(a.next&&canAffordE(a.cost)){spendE(a.cost);eAgeUpgrading=true;eAgeTimer=0;}}
+  if(!eAgeUpgrading&&eVils.length>=7&&hasBS&&eFood>=700&&eGold>=150&&eAge<2){ // Feudal→Castle
+    const a=AGES[eCurrentAge];if(a.next&&canAffordE(a.cost)){spendE(a.cost);eAgeUpgrading=true;eAgeTimer=0;}}
+  // === Phase 6: 研究科技 ===
+  if(!eResearchQueue&&hasBS&&eAge>=1){
+    const prio=['iron','shield','range','military','speed','lumber','heal'];
+    for(const k of prio){const t=eTechs[k];if(!t||t.done)continue;
+      if(t.bldgReq&&!eBldgs.some(b=>b.type===t.bldgReq&&b.complete))continue;
+      if(canAffordE(t.cost)){spendE(t.cost);eResearchQueue=k;t.rt=0;break;}}
+  }
+  // === Phase 7: 生兵 (counter-unit detection) ===
+  if(hasBsk&&eMil.length<Math.min(14+cfg.aggro*6,30)&&eUnits.length<ePopCap){
+    const playerHasHorse=pMil.filter(u=>u.type==='horseman'||u.type==='knight').length;
+    const playerHasArch=pMil.filter(u=>u.type==='archer'||u.type==='mass_archer').length;
+    let prefType='swordsman';
+    if(playerHasHorse>1)prefType='spearman'; // 騎兵多→出矛兵
+    else if(playerHasArch>2)prefType='horseman'; // 弓兵多→出騎兵
+    else if(eAge>=1&&eGold>=60)prefType='horseman';
+    else if(Math.random()<.35)prefType='archer';
+    const d=UNIT_DEFS[prefType];if(!d)return;
+    if(eFood>=(d.cost.food||0)&&eWood>=(d.cost.wood||0)&&eStone>=(d.cost.stone||0)&&eGold>=(d.cost.gold||0)){
+      eFood-=d.cost.food||0;eWood-=d.cost.wood||0;eStone-=d.cost.stone||0;eGold-=d.cost.gold||0;
+      const u=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+30,prefType,'enemy');
+      u.patrolX=etc.x;u.patrolY=etc.y;units.push(u);upPop();}
+  }
+  // === Phase 8: 攻擊決策 ===
+  const attReady=eMil.filter(u=>u.type!=='villager').length;
+  const minAtt=aiDiff==='hard'?3:(aiDiff==='normal'?4:6);
+  if(gameTime>=150&&attReady>=minAtt){
+    const attackChance=aiDiff==='hard'?.08:(aiDiff==='normal'?.05:.025);
+    if(Math.random()<attackChance*cfg.aggro){
+      const target=pMil[0]||pUnits[0]||tc;
+      const tcx=target.w?(target.x+target.w/2):(target.x||tc.x+tc.w/2);
+      const tcy=target.h?(target.y+target.h/2):(target.y||tc.y+tc.h/2);
+      // 集中兵力: 全部或部分
+      const wave=eMil.slice(0,Math.min(eMil.length,Math.floor(attReady*cfg.micro)));
+      wave.forEach(u=>{u.tEn=target;u.state='chase';u.tx=tcx;u.ty=tcy;u.path=null;});}
+  }
 }
-function applyTech(key){
+function canAffordE(c){return(!c.wood||eWood>=c.wood)&&(!c.food||eFood>=c.food)&&(!c.stone||eStone>=c.stone)&&(!c.gold||eGold>=c.gold);}
+function spendE(c){if(c.wood)eWood-=c.wood;if(c.food)eFood-=c.food;if(c.stone)eStone-=c.stone;if(c.gold)eGold-=c.gold;}
+function applyTech(key,team='player'){
   if(!key)return;
-  if(key==='lumber'){for(const u of units){if(u.type==='villager'&&u.team==='player')u.gi=Math.max(.2,u.gi*.8);}}
-  if(key==='military'){for(const u of units){if(u.team==='player'&&u.type!=='villager'){u.atk+=4;u.mh=Math.round(u.mh*1.15);u.hp=Math.min(u.hp+Math.round(u.mh*.15),u.mh);}}}
-  if(key==='speed'){for(const u of units){if(u.team==='player')u.sp=Math.round(u.sp*1.25);}}
-  if(key==='iron'){for(const u of units){if(u.team==='player'&&u.type!=='villager')u.atk+=5;}showStatus('⚔️ 所有軍隊攻擊+5');}
-  if(key==='shield'){for(const u of units){if(u.team==='player'&&u.type!=='villager'){u.mh=Math.round(u.mh*1.2);u.hp=Math.min(u.hp+Math.round(u.mh*.1),u.mh);}}showStatus('🛡️ 所有軍隊生命+20%');}
-  if(key==='range'){for(const u of units){if(u.team==='player'&&(u.type==='archer'||u.type==='mass_archer')){u.rng=Math.round(u.rng*1.3);u.atk+=3;}}showStatus('🏹 弓兵射程+30% 攻擊+3');}
+  if(key==='lumber'){for(const u of units){if(u.type==='villager'&&u.team===team)u.gi=Math.max(.2,u.gi*.8);}}
+  if(key==='military'){for(const u of units){if(u.team===team&&u.type!=='villager'){u.atk+=4;u.mh=Math.round(u.mh*1.15);u.hp=Math.min(u.hp+Math.round(u.mh*.15),u.mh);}}}
+  if(key==='speed'){for(const u of units){if(u.team===team)u.sp=Math.round(u.sp*1.25);}}
+  if(key==='iron'){for(const u of units){if(u.team===team&&u.type!=='villager')u.atk+=5;}showStatus('⚔️ '+team+'軍隊攻擊+5');}
+  if(key==='shield'){for(const u of units){if(u.team===team&&u.type!=='villager'){u.mh=Math.round(u.mh*1.2);u.hp=Math.min(u.hp+Math.round(u.mh*.1),u.mh);}}showStatus('🛡️ '+team+'軍隊生命+20%');}
+  if(key==='range'){for(const u of units){if(u.team===team&&(u.type==='archer'||u.type==='mass_archer')){u.rng=Math.round(u.rng*1.3);u.atk+=3;}}showStatus('🏹 '+team+'弓兵射程+30% 攻擊+3');}
 }
 function spawnWave(){
   waveNum++;waveNumEl.textContent=waveNum;stats.wavesCleared=waveNum-1;
@@ -1110,7 +1221,8 @@ function update(dt){
     if(u.team==='player'&&u.hp>0&&u.hp<u.mh){
       const healR=techs.heal.done?10:5;
       if(Math.hypot(u.x-(tc.x+50),u.y-(tc.y+50))<120)u.hp=Math.min(u.mh,u.hp+healR*dt);}}
-  if(researchQueue){const t=techs[researchQueue];t.rt+=dt;if(t.rt>=t.rtime){const k=researchQueue;t.done=true;researchQueue=null;applyTech(k);showStatus('✅ '+t.name+'完成！');playDrop();}}
+  if(researchQueue){const t=techs[researchQueue];t.rt+=dt;if(t.rt>=t.rtime){const k=researchQueue;t.done=true;researchQueue=null;applyTech(k,'player');showStatus('✅ '+t.name+'完成！');playDrop();}}
+  if(eResearchQueue){const t=eTechs[eResearchQueue];t.rt+=dt;if(t.rt>=t.rtime){const k=eResearchQueue;t.done=true;eResearchQueue=null;applyTech(k,'enemy');}}
   if(!mp.ready){
     waveTimer-=dt;
     if(waveTimer<=0){spawnWave();waveTimer=WAVE_INTERVAL;}
@@ -1156,7 +1268,24 @@ function rdMenu(){
   }else if(selectedBldg&&selectedBldg.type==='tc'){
     hideAll();show('bmenuLabel',1).textContent='🏰主堡';
     en('btnTrainVil',food>=50&&(isGuest||playerCount()<popCap));show('btnTrainVil',1);
-    if(isGuest){gm.style.display='flex';return;} // guest 暫無科技/時代
+    if(isGuest){
+      const erq=eResearchQueue;const eT=isGuest?eTechs:techs;
+      const eres=isGuest&&eResearchQueue;const ecAge=isGuest?eCurrentAge:currentAge;
+      const ecUpg=isGuest?eAgeUpgrading:ageUpgrading;
+      const ecAfford=c=>canAfford(c); // guest resource check uses synced wood/food etc
+      en('btnT1',!eT.lumber.done&&!erq&&ecAfford(eT.lumber.cost));show('btnT1',!eT.lumber.done);
+      en('btnT2',!eT.military.done&&!erq&&ecAfford(eT.military.cost));show('btnT2',!eT.military.done);
+      en('btnT3',!eT.speed.done&&!erq&&ecAfford(eT.speed.cost));show('btnT3',!eT.speed.done);
+      en('btnT4',!eT.heal.done&&!erq&&ecAfford(eT.heal.cost));show('btnT4',!eT.heal.done);
+      if(erq){const t=eTechs[eResearchQueue];show('bmenuLabel',1).textContent=`🔬${t.name}`;}
+      const gNextAge=AGES[ecAge]?.next;
+      if(gNextAge&&!ecUpg){
+        const nc=AGES[ecAge].cost;
+        const costStr=Object.entries(nc).map(([k,v])=>(k==='gold'?`💰${v}`:k==='food'?`🍓${v}`:k==='wood'?`🪵${v}`:`🪨${v}`)).join(' ');
+        document.getElementById('ageUpCost').textContent=costStr;
+        en('btnAgeUp',ecAfford(AGES[ecAge].cost));show('btnAgeUp',1);}
+      else if(ecUpg){show('bmenuLabel',1).textContent='⬆️ 升級中…';}
+    }else{
     const rq=researchQueue;
     en('btnT1',!techs.lumber.done&&!rq&&canAfford(techs.lumber.cost));show('btnT1',!techs.lumber.done);
     en('btnT2',!techs.military.done&&!rq&&canAfford(techs.military.cost));show('btnT2',!techs.military.done);
@@ -1171,7 +1300,7 @@ function rdMenu(){
       en('btnAgeUp',canAdvanceAge());show('btnAgeUp',1);
     }else if(ageUpgrading){
       show('bmenuLabel',1).textContent=`⬆️ 升級中 ${ageUpPctEl.textContent}`;
-    }
+    }}
   }else if(selectedBldg&&(selectedBldg.type==='barracks'||selectedBldg.type==='castle_bldg')&&selectedBldg.complete&&selectedBldg.team===MYTEAM){
     hideAll();const isCastle=selectedBldg.type==='castle_bldg';
     show('bmenuLabel',1).textContent=isCastle?'🏰城堡':'⚔️兵營';
@@ -1183,13 +1312,13 @@ function rdMenu(){
     if(ai>=1||isGuest){en('btnCata',canAfford(UNIT_DEFS.catapult.cost)&&room);show('btnCata',1);}
     if(ai>=2||isGuest){en('btnKnight',canAfford(UNIT_DEFS.knight.cost)&&room);show('btnKnight',1);}
     if(ai>=2||isGuest){en('btnMassArm',canAfford(UNIT_DEFS.mass_archer.cost)&&room);show('btnMassArm',1);}
-  }else if(selectedBldg&&selectedBldg.type==='blacksmith'&&selectedBldg.complete&&selectedBldg.team===MYTEAM&&!isGuest){
+  }else if(selectedBldg&&selectedBldg.type==='blacksmith'&&selectedBldg.complete&&selectedBldg.team===MYTEAM){
     hideAll();show('bmenuLabel',1).textContent='⚒️鍛造廠';
-    const rq=researchQueue;
-    en('btnBS1',!techs.iron.done&&!rq&&canAfford(techs.iron.cost));show('btnBS1',!techs.iron.done);
-    en('btnBS2',!techs.shield.done&&!rq&&canAfford(techs.shield.cost));show('btnBS2',!techs.shield.done);
-    en('btnBS3',!techs.range.done&&!rq&&canAfford(techs.range.cost));show('btnBS3',!techs.range.done);
-    if(rq){const t=techs[rq];show('bmenuLabel',1).textContent=`🔬${t.name} ${Math.floor(t.rt/t.rtime*100)}%`;}
+    const rq=isGuest?eResearchQueue:researchQueue;const T=isGuest?eTechs:techs;
+    en('btnBS1',!T.iron.done&&!rq&&canAfford(T.iron.cost));show('btnBS1',!T.iron.done);
+    en('btnBS2',!T.shield.done&&!rq&&canAfford(T.shield.cost));show('btnBS2',!T.shield.done);
+    en('btnBS3',!T.range.done&&!rq&&canAfford(T.range.cost));show('btnBS3',!T.range.done);
+    if(rq){const t=T[rq];show('bmenuLabel',1).textContent=`🔬${t.name} ${Math.floor(t.rt/t.rtime*100)}%`;}
   }else if(selectedBldg&&selectedBldg.complete){
     hideAll();
     const icons={house:'🏠',mill:'🌾',tower:'🏗️',wall:'🧱',barracks:'⚔️',blacksmith:'⚒️',castle_bldg:'🏰'};
@@ -1918,7 +2047,10 @@ function sendSnap(){
     tch:Math.round(tc.hp),etch:Math.round(etc.hp),
     res:[eWood,eFood,eStone,eGold],t:Math.round(gameTime),
     over:isGameOver?(tc.hp<=0?2:1):0,
-    rs:[trees.map(t=>t.res),bushes.map(b=>b.res),stones.map(s=>s.res),goldMines.map(g=>g.res)]});
+    rs:[trees.map(t=>t.res),bushes.map(b=>b.res),stones.map(s=>s.res),goldMines.map(g=>g.res)],
+    et:Object.keys(eTechs).map(k=>eTechs[k].done?1:0),
+    erq:eResearchQueue?Object.keys(eTechs).indexOf(eResearchQueue):-1,
+    ea:ageIdx(eCurrentAge),eaUp:eAgeUpgrading?1:0});
 }
 function hostRecv(d){
   console.log('[MP host] recv',d.c);
@@ -1953,6 +2085,19 @@ function hostRecv(d){
       buildings.push(b);
       evils.slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;
         v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});}
+  }else if(d.c==='research'){
+    if(eResearchQueue)return;const t=eTechs[d.key];if(!t||t.done)return;
+    if(t.bldgReq&&!buildings.some(b=>b.type===t.bldgReq&&b.complete&&b.team==='enemy'))return;
+    const c5=t.cost;if(eWood<(c5.wood||0)||eFood<(c5.food||0)||eStone<(c5.stone||0)||eGold<(c5.gold||0))return;
+    eWood-=c5.wood||0;eFood-=c5.food||0;eStone-=c5.stone||0;eGold-=c5.gold||0;
+    eResearchQueue=d.key;t.rt=0;
+  }else if(d.c==='age'){
+    if(eAgeUpgrading)return;const a=AGES[eCurrentAge];if(!a.next)return;
+    if(eWood<(a.cost.wood||0)||eFood<(a.cost.food||0)||eStone<(a.cost.stone||0)||eGold<(a.cost.gold||0))return;
+    const missing=a.reqBldg.filter(bt=>!buildings.some(b=>b.type===bt&&b.complete&&b.team==='enemy'));
+    if(missing.length)return;
+    eWood-=a.cost.wood||0;eFood-=a.cost.food||0;eStone-=a.cost.stone||0;eGold-=a.cost.gold||0;
+    eAgeUpgrading=true;eAgeTimer=0;
   }
 }
 function guestRecv(d){
@@ -2007,6 +2152,11 @@ function applySnap(){
   d.rs[1].forEach((r,i)=>{if(bushes[i])bushes[i].res=r;});
   d.rs[2].forEach((r,i)=>{if(stones[i])stones[i].res=r;});
   d.rs[3].forEach((r,i)=>{if(goldMines[i])goldMines[i].res=r;});
+  // sync enemy tech/age state
+  if(d.et){const ek=Object.keys(eTechs);d.et.forEach((v,i)=>{if(ek[i])eTechs[ek[i]].done=!!v;});}
+  if(d.erq!==undefined){eResearchQueue=d.erq>=0?Object.keys(eTechs)[d.erq]:null;}
+  if(d.ea!==undefined){const ages=Object.keys(AGES);eCurrentAge=ages[d.ea]||'dark';}
+  eAgeUpgrading=!!d.eaUp;
   upPop();popCapEl.textContent='∞';
   if(d.over&&!isGameOver)endGame(d.over===2);
 }
