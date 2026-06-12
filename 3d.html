@@ -117,7 +117,8 @@
     開房後將連結傳俾朋友，佢一開就入到你局。<br>你做藍方，朋友做紅方。（用 P2P 連線，雙方都要開住個 page）
   </div>
   <div id="lbSettings" style="margin:12px 0;display:flex;flex-direction:column;gap:8px;font-size:13px;color:#ccc;text-align:left;max-width:300px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;"><label>初始資源：</label><select id="lbRes" style="background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px;font-size:12px;"><option value="std">標準 (100🪵80🍓)</option><option value="rich">富裕 (500🪵500🍓200🪨200💰)</option></select></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;"><label>勝利條件：</label><select id="lbVict" style="background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px;font-size:12px;"><option value="tc" selected>摧毀主堡</option><option value="annihilate">殲滅全軍</option><option value="timed">15分鐘計分</option></select></div>
+	    <div style="display:flex;justify-content:space-between;align-items:center;"><label>初始資源：</label><select id="lbRes" style="background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px;font-size:12px;"><option value="std">標準 (100🪵80🍓)</option><option value="rich">富裕 (500🪵500🍓200🪨200💰)</option></select></div>
     <div style="display:flex;justify-content:space-between;align-items:center;"><label>AI 難度：</label><select id="lbAi" style="background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px;font-size:12px;"><option value="easy">簡單</option><option value="normal" selected>普通</option><option value="hard">困難</option></select></div>
     <div style="display:flex;justify-content:space-between;align-items:center;"><label>日夜循環：</label><select id="lbDay" style="background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px;font-size:12px;"><option value="on" selected>開啟</option><option value="off">關閉（鎖正午）</option></select></div>
   </div>
@@ -166,10 +167,15 @@
   <button id="btnSpear" onclick="trainUnit('spearman')" style="display:none">🗡️矛兵 <span class="costF">🍓35</span><span class="cost">🪵25</span></button>
   <button id="btnKnight" onclick="trainUnit('knight')" style="display:none">🐴騎士 <span class="costF">🍓60</span><span class="costG">💰75</span></button>
   <button id="btnMassArm" onclick="trainUnit('mass_archer')" style="display:none">🏹連弩兵 <span class="costF">🍓50</span><span class="cost">🪵50</span><span class="costG">💰25</span></button>
+	  <button id="btnMonk" onclick="trainUnit('monk')" style="display:none">🙏僧侶 <span class="costF">🍓30</span><span class="costG">💰100</span></button>
+	  <button id="btnScout" onclick="trainUnit('scout')" style="display:none">🔭斥候 <span class="costF">🍓30</span></button>
   <button id="btnAgeUp" onclick="advanceAge()" style="display:none">⬆️升級時代 <span id="ageUpCost"></span></button>
   <button id="btnBS1" onclick="doResearch('iron')" style="display:none">⚔️鐵器鍛造 <span class="cost">🪵100</span><span class="costG">💰75</span></button>
   <button id="btnBS2" onclick="doResearch('shield')" style="display:none">🛡️強化盔甲 <span class="cost">🪵75</span><span class="costG">💰50</span></button>
   <button id="btnBS3" onclick="doResearch('range')" style="display:none">🏹長弓術 <span class="costF">🍓60</span><span class="costG">💰50</span></button>
+	  <button id="btnTW1" onclick="doResearch('fortwall')" style="display:none">🧱城牆強化 <span class="cost">🪵150</span><span class="costS">🪨100</span></button>
+	  <button id="btnTW2" onclick="doResearch('horsespd')" style="display:none">🐴快馬 <span class="costF">🍓100</span><span class="costG">💰60</span></button>
+	  <button id="btnTW3" onclick="doResearch('goldmine')" style="display:none">💰採金術 <span class="costF">🍓80</span><span class="cost">🪵50</span></button>
 </div>
 <div id="minimap"><canvas id="mc" width="180" height="135"></canvas></div>
 <div id="mobileBar">
@@ -348,6 +354,9 @@ const techs={
   iron:    {name:'鐵器鍛造',cost:{wood:100,gold:75},          done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
   shield:  {name:'強化盔甲',cost:{wood:75,gold:50},           done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
   range:   {name:'長弓術',  cost:{food:60,gold:50},           done:false,rt:0,rtime:20,bldgReq:'blacksmith'},
+  fortwall:{name:'城牆強化',cost:{wood:150,stone:100},       done:false,rt:0,rtime:30,bldgReq:'blacksmith'},
+  horsespd:{name:'快馬',    cost:{food:100,gold:60},           done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
+  goldmine:{name:'採金術',  cost:{food:80,wood:50},            done:false,rt:0,rtime:20,bldgReq:'blacksmith'},
 };
 let researchQueue=null;
 function cloneTechs(){return{
@@ -358,6 +367,9 @@ function cloneTechs(){return{
   iron:    {name:'鐵器鍛造',cost:{wood:100,gold:75},          done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
   shield:  {name:'強化盔甲',cost:{wood:75,gold:50},           done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
   range:   {name:'長弓術',  cost:{food:60,gold:50},           done:false,rt:0,rtime:20,bldgReq:'blacksmith'},
+  fortwall:{name:'城牆強化',cost:{wood:150,stone:100},       done:false,rt:0,rtime:30,bldgReq:'blacksmith'},
+  horsespd:{name:'快馬',    cost:{food:100,gold:60},           done:false,rt:0,rtime:25,bldgReq:'blacksmith'},
+  goldmine:{name:'採金術',  cost:{food:80,wood:50},            done:false,rt:0,rtime:20,bldgReq:'blacksmith'},
 };}
 const eTechs=cloneTechs();let eResearchQueue=null;
 let eCurrentAge='dark',eAgeUpgrading=false,eAgeTimer=0;
@@ -424,6 +436,8 @@ const UNIT_DEFS={
   knight:    {name:'騎士',  sp:180,hp:130,atk:16,rng:28, cd:1.1,cost:{food:60,gold:75},           sz:26, ageReq:'castle'},
   mass_archer:{name:'連弩兵',sp:135,hp:60, atk:10,rng:180,cd:1.2,cost:{food:50,wood:50,gold:25},  sz:18, ageReq:'castle'},
   catapult:  {name:'投石車',sp:70, hp:120,atk:50,rng:220,cd:3.5,cost:{food:60,wood:80,stone:30},  sz:28, ageReq:'feudal', splash:65},
+  monk:      {name:'僧侶',  sp:100,hp:45, atk:0, rng:120,cd:2.5,cost:{food:30,gold:100},           sz:18, ageReq:'castle',  heal:8},
+  scout:     {name:'斥候',  sp:250,hp:35, atk:4, rng:24, cd:1.3,cost:{food:30},                    sz:20, ageReq:'dark',    vision:280},
 };
 const buildings=[];let selectedBldg=null;
 const garrisonMap=new Map(); // building id → [{unit data}]
@@ -626,6 +640,30 @@ function drawTimeline(){
 }
 // 勝負 + 戰績
 let isGameOver=false;
+// ---- 教學提示 ----
+const TUTORIAL_TIPS=[
+  {id:'selVil',msg:'🖱️ 框選村民（拖曳左鍵）',check:()=>units.some(u=>u.team===MYTEAM&&u.type==='villager'&&u.sel)},
+  {id:'chopWood',msg:'🪓 右鍵點樹木派村民伐木',check:()=>units.some(u=>u.team===MYTEAM&&u.type==='villager'&&u.gType==='wood')},
+  {id:'buildHouse',msg:'🏠 選村民按 B 鍵蓋房屋 (+5人口)',check:()=>buildings.some(b=>b.team===MYTEAM&&b.type==='house'&&(b.complete||b.p>0))},
+  {id:'buildBarracks',msg:'⚔️ 選村民按 R 鍵蓋兵營',check:()=>buildings.some(b=>b.team===MYTEAM&&b.type==='barracks'&&(b.complete||b.p>0))},
+];
+let tutorialStep=0,tutorialMsgT=0;
+try{const s=localStorage.getItem('tutorialStep');if(s!==null)tutorialStep=parseInt(s);}catch(e){}
+function checkTutorial(dt){
+  if(tutorialStep>=TUTORIAL_TIPS.length||gameTime>180)return; // 首3分鐘或做晒就完
+  if(tutorialMsgT>0){tutorialMsgT-=dt;return;}
+  const tip=TUTORIAL_TIPS[tutorialStep];
+  if(tip.check()){
+    tutorialStep++;tutorialMsgT=0;
+    localStorage.setItem('tutorialStep',tutorialStep);
+    if(tutorialStep<TUTORIAL_TIPS.length)showStatus('✅ '+tip.msg+'！');
+    else showStatus('🎓 教學完成！');
+    return;
+  }
+  // 每15秒重複提示
+  if(Math.floor(gameTime)%15===0&&tutorialMsgT<=0){
+    showStatus(tip.msg);tutorialMsgT=3;}
+}
 function getRecord(){try{const d=JSON.parse(localStorage.getItem('rts3d_rec')||'{}');return{wins:d.wins||0,losses:d.losses||0,elo:d.elo||1000,kills:d.kills||0,deaths:d.deaths||0};}catch(e){return{wins:0,losses:0,elo:1000,kills:0,deaths:0};}}
 function saveRecord(win,k,d){
   const r=getRecord();if(win)r.wins++;else r.losses++;
@@ -729,25 +767,30 @@ const units=[];
 function selected(){return units.filter(u=>u.sel);}
 // ---- 音效 ----
 const AC=new(window.AudioContext||window.webkitAudioContext)();
+// 全域音效 master chain：compressor 防止多人戰鬥炸耳
+const soundMaster=AC.createDynamicsCompressor();soundMaster.threshold.setValueAtTime(-24,AC.currentTime);soundMaster.knee.setValueAtTime(12,AC.currentTime);soundMaster.ratio.setValueAtTime(8,AC.currentTime);soundMaster.attack.setValueAtTime(.003,AC.currentTime);soundMaster.release.setValueAtTime(.15,AC.currentTime);soundMaster.connect(soundMaster);
+// 同款音效 cooldown 防重疊（key→lastTime）
+const soundCDs={};
+function canPlaySnd(key,cd=.1){const t=AC.currentTime;if(soundCDs[key]&&t-soundCDs[key]<cd)return false;soundCDs[key]=t;return true;}
 addEventListener('mousedown',()=>{if(AC.state==='suspended')AC.resume();},{once:0});
 function play(s,f,e,g,t){if(AC.state==='suspended')AC.resume();const o=AC.createOscillator(),gx=AC.createGain();o.type=t||'sine';
   o.frequency.setValueAtTime(s,AC.currentTime);if(f)o.frequency.exponentialRampToValueAtTime(f,AC.currentTime+(e||.1));
   gx.gain.setValueAtTime(g||.2,AC.currentTime);gx.gain.exponentialRampToValueAtTime(.001,AC.currentTime+(e||.1));
-  o.connect(gx);gx.connect(AC.destination);o.start();o.stop(AC.currentTime+(e||.1));}
-function playChop(){const l=AC.sampleRate*.08,b=AC.createBuffer(1,l,AC.sampleRate),d=b.getChannelData(0);
+  o.connect(gx);gx.connect(soundMaster);o.start();o.stop(AC.currentTime+(e||.1));}
+function playChop(){if(!canPlaySnd('chop',.06))return;const l=AC.sampleRate*.08,b=AC.createBuffer(1,l,AC.sampleRate),d=b.getChannelData(0);
   for(let i=0;i<l;i++)d[i]=(Math.random()*2-1)*(1-i/l)**2;const s=AC.createBufferSource();s.buffer=b;
   const f=AC.createBiquadFilter();f.type='bandpass';f.frequency.value=350;f.Q.value=.8;
   const g=AC.createGain();g.gain.setValueAtTime(.5,AC.currentTime);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+.08);
-  s.connect(f);f.connect(g);g.connect(AC.destination);s.start();
+  s.connect(f);f.connect(g);g.connect(soundMaster);s.start();
   play(140,60,.06,.35,'sawtooth');}
 function playPick(){play(600,300,.08,.2);}
 function playDrop(){play(880,440,.12,.22);}
-function playClick(){const l=Math.floor(AC.sampleRate*.03),b=AC.createBuffer(1,l,AC.sampleRate),d=b.getChannelData(0);
+function playClick(){if(!canPlaySnd('click',.04))return;const l=Math.floor(AC.sampleRate*.03),b=AC.createBuffer(1,l,AC.sampleRate),d=b.getChannelData(0);
   for(let i=0;i<l;i++)d[i]=(Math.random()*2-1)*(1-i/l)**3;const s=AC.createBufferSource();s.buffer=b;
   const f=AC.createBiquadFilter();f.type='highpass';f.frequency.value=1200;const g=AC.createGain();g.gain.value=.28;
-  s.connect(f);f.connect(g);g.connect(AC.destination);s.start();}
-function playHit(){play(200,50,.1,.15,'sawtooth');}
-function playDeath(){play(300,30,.3,.2,'sawtooth');}
+  s.connect(f);f.connect(g);g.connect(soundMaster);s.start();}
+function playHit(){if(!canPlaySnd('hit',.08))return;play(200,50,.1,.15,'sawtooth');}
+function playDeath(){if(!canPlaySnd('death',.12))return;play(300,30,.3,.2,'sawtooth');}
 let stepCooldown=0;
 function playStep(heavy=false){
   if(stepCooldown>0)return; stepCooldown=heavy?.18:.12;
@@ -757,41 +800,41 @@ function playStep(heavy=false){
   const src=AC.createBufferSource();src.buffer=b;
   const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=heavy?200:350;
   const g=AC.createGain();g.gain.value=.35;
-  src.connect(f);f.connect(g);g.connect(AC.destination);src.start();
+  src.connect(f);f.connect(g);g.connect(soundMaster);src.start();
 }
 function playTrainDone(){if(AC.state==='suspended')AC.resume(); // 訓練完成 — C-E-G 和弦叮
   [523,659,784].forEach(f=>{
     const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;
     g.gain.setValueAtTime(.15,AC.currentTime);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+.25);
-    o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+.25);});}
+    o.connect(g);g.connect(soundMaster);o.start();o.stop(AC.currentTime+.25);});}
 function playBuildDone(){if(AC.state==='suspended')AC.resume(); // 建築完成 — 號角 sweep
   const l=AC.sampleRate*.35,b=AC.createBuffer(1,l,AC.sampleRate),d=b.getChannelData(0);
   for(let i=0;i<l;i++){const t=i/l;d[i]=Math.sin(t*Math.PI*2*(3+t*12))*(1-t)*.3+(Math.random()*2-1)*.15*(1-t);}
   const s=AC.createBufferSource();s.buffer=b;const f=AC.createBiquadFilter();f.type='lowpass';
   f.frequency.setValueAtTime(300,AC.currentTime);f.frequency.exponentialRampToValueAtTime(800,AC.currentTime+.35);
-  const g=AC.createGain();g.gain.value=.4;s.connect(f);f.connect(g);g.connect(AC.destination);s.start();}
+  const g=AC.createGain();g.gain.value=.4;s.connect(f);f.connect(g);g.connect(soundMaster);s.start();}
 function playAgeUp(){if(AC.state==='suspended')AC.resume(); // 時代升級 — 鐘聲 ascending
   [523,659,784,1047].forEach((f,i)=>{
     const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;
     const t=AC.currentTime+i*.12;g.gain.setValueAtTime(.18,t);g.gain.exponentialRampToValueAtTime(.001,t+.45);
-    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+.45);});}
-function playDeathCry(){ // 陣亡 — descending scream
+    o.connect(g);g.connect(soundMaster);o.start(t);o.stop(t+.45);});}
+function playDeathCry(){if(!canPlaySnd('dcry',.15))return; // 陣亡 — descending scream
   play(400,60,.35,.18,'sawtooth');
   const l=AC.sampleRate*.2,b=AC.createBuffer(1,l,AC.sampleRate),d=b.getChannelData(0);
   for(let i=0;i<l;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/l,5)*.25;
   const s=AC.createBufferSource();s.buffer=b;const f2=AC.createBiquadFilter();f2.type='bandpass';
   f2.frequency.setValueAtTime(600,AC.currentTime);f2.frequency.exponentialRampToValueAtTime(150,AC.currentTime+.2);
-  const g2=AC.createGain();g2.gain.value=.3;s.connect(f2);f2.connect(g2);g2.connect(AC.destination);s.start();}
+  const g2=AC.createGain();g2.gain.value=.3;s.connect(f2);f2.connect(g2);g2.connect(soundMaster);s.start();}
 function playVictory(){if(AC.state==='suspended')AC.resume(); // 勝利 — major fanfare C-E-G-C
   [523,659,784,1047].forEach((f,i)=>{
     const o=AC.createOscillator(),g=AC.createGain();o.type='triangle';o.frequency.value=f;
     const t=AC.currentTime+i*.15;g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.55);
-    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+.55);});}
+    o.connect(g);g.connect(soundMaster);o.start(t);o.stop(t+.55);});}
 function playDefeat(){if(AC.state==='suspended')AC.resume(); // 失敗 — descending minor
   [523,440,349,262].forEach((f,i)=>{
     const o=AC.createOscillator(),g=AC.createGain();o.type='triangle';o.frequency.value=f;
     const t=AC.currentTime+i*.18;g.gain.setValueAtTime(.18,t);g.gain.exponentialRampToValueAtTime(.001,t+.6);
-    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+.6);});}
+    o.connect(g);g.connect(soundMaster);o.start(t);o.stop(t+.6);});}
 // ---- 背景音樂 ----
 let musicOn=false,musicBeat=0,musicNote=0,musicDrone=null,musicDroneG=null;
 const MUSIC_SEQ=[ // Am 小調琶音 (和平 120BPM)
@@ -804,7 +847,7 @@ function startMusic(){if(AC.state==='suspended')AC.resume();
   if(musicDrone)return;
   musicDrone=AC.createOscillator();musicDrone.type='triangle';musicDrone.frequency.value=130.81;
   musicDroneG=AC.createGain();musicDroneG.gain.value=.04;
-  musicDrone.connect(musicDroneG);musicDroneG.connect(AC.destination);musicDrone.start();}
+  musicDrone.connect(musicDroneG);musicDroneG.connect(soundMaster);musicDrone.start();}
 function stopMusic(){
   if(!musicDrone)return;
   try{musicDrone.stop();}catch(e){}musicDrone=null;musicDroneG=null;}
@@ -824,7 +867,7 @@ function musicTick(dt){
     const t=AC.currentTime;const o=AC.createOscillator(),g=AC.createGain();
     o.type='triangle';o.frequency.value=freq;
     g.gain.setValueAtTime(.07,t);g.gain.exponentialRampToValueAtTime(.001,t+dur*.7);
-    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+dur*.7);
+    o.connect(g);g.connect(soundMaster);o.start(t);o.stop(t+dur*.7);
     musicNote++;}}
 // ---- 特效（overlay 投影） ----
 const fx=[];
@@ -1092,7 +1135,7 @@ function issueCmd(wx,wy,list){
   const team=sel[0].team;
   const he=findEnemyAt(wx,wy,team);
   const vils=sel.filter(u=>u.type==='villager');
-  if(he){sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=he;u.state='chase';u.path=null;u.waypoints=[];});
+  if(he){sel.forEach(u=>{if(u.type==='monk')return;u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=he;u.state='chase';u.path=null;u.waypoints=[];});
     showStatus('攻擊！');playClick();spawnFx(wx,wy,'#ff4040',8);return;}
   const ht=trees.find(t=>t.res>0&&Math.hypot(t.x-wx,t.y-wy)<t.r+12);
   const hb=bushes.find(b=>b.res>0&&Math.hypot(b.x-wx,b.y-wy)<b.r+12);
@@ -1109,7 +1152,7 @@ function issueCmd(wx,wy,list){
   // A-Move: 軍事單位移動中自動接敵
   sel.forEach(u=>{
     u.path=aStar(u.x,u.y,wx,wy);u.pi=0;
-    u.aMove=true;u.aMoveX=wx;u.aMoveY=wy;});
+    if(u.type!=='monk'){u.aMove=true;u.aMoveX=wx;u.aMoveY=wy;}});
   playClick();spawnFx(wx,wy,'#ffd250',6);}
 canvas.addEventListener('mousedown',e=>{if(e.button!==0)return;
   if(e.clientY>innerHeight-72&&e.clientY<innerHeight)return;
@@ -1231,7 +1274,7 @@ function mvUnit(v,dt){
         // Waypoint queue: 到站就 pop 下一個途徑點
         if(v.waypoints&&v.waypoints.length>0){
           const wp=v.waypoints.shift();v.tx=wp.x;v.ty=wp.y;v.state='moving';
-          if(v.type!=='villager'){v.path=aStar(v.x,v.y,wp.x,wp.y);v.pi=0;v.aMove=true;v.aMoveX=wp.x;v.aMoveY=wp.y;}
+          if(v.type!=='villager'&&v.type!=='monk'){v.path=aStar(v.x,v.y,wp.x,wp.y);v.pi=0;v.aMove=true;v.aMoveX=wp.x;v.aMoveY=wp.y;}
         }else v.state='idle';}}
     if(v.state==='villagerWait'){v.state='idle';}
   }
@@ -1285,7 +1328,7 @@ function updateCombat(v,dt){
   if(v.hp<=0)return;
   const foe=v.team==='player'?'enemy':'player';
   // A-Move: 移動中掃敵, 見到就打
-  if(v.aMove&&v.state==='moving'&&v.type!=='villager'){
+  if(v.aMove&&v.state==='moving'&&v.type!=='villager'&&v.type!=='monk'){
     const near=units.find(u=>u.team===foe&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<v.rng*1.4);
     if(near){v.tEn=near;v.state='chase';v.aMove=false;v.tx=near.x;v.ty=near.y;v.path=null;}
   }
@@ -1297,20 +1340,20 @@ function updateCombat(v,dt){
     [v.patrolX,v.patrolDestX]=[v.patrolDestX,v.patrolX];[v.patrolY,v.patrolDestY]=[v.patrolDestY,v.patrolY];
     v.tx=v.patrolX;v.ty=v.patrolY;}
   // Patrol: 巡邏途中自動接敵
-  if(v.patrol&&v.state==='moving'&&v.type!=='villager'){
+  if(v.patrol&&v.state==='moving'&&v.type!=='villager'&&v.type!=='monk'){
     const near=units.find(u=>u.team===foe&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<v.rng*1.5);
     if(near){v.tEn=near;v.state='chase';v.path=null;}
   }
   // Patrol: 打完返去繼續巡
   if(v.patrol&&v.state==='idle'&&!v.tEn&&v.type!=='villager'){v.tx=v.patrolX;v.ty=v.patrolY;v.state='moving';}
-  if(v.team==='enemy'&&v.state==='idle'&&!v.tEn){
+  if(v.team==='enemy'&&v.type!=='monk'&&v.state==='idle'&&!v.tEn){
     const px=v.patrolX||v.x,py=v.patrolY||v.y;
     if(Math.hypot(v.x-px,v.y-py)>120){v.tx=px;v.ty=py;v.state='moving';}
     else if(Math.random()<.005){v.tx=px+(Math.random()-.5)*250;v.ty=py+(Math.random()-.5)*250;v.state='moving';}
     const cl=gameTime>=180?units.find(u=>u.team==='player'&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<220):null;
     if(cl){v.tEn=cl;v.state='chase';}
   }
-  if((v.state==='chase'||v.state==='attack')&&v.tEn){
+  if((v.state==='chase'||v.state==='attack')&&v.tEn&&v.type!=='monk'){
     const e=v.tEn;
     if(e.hp!==undefined&&e.hp<=0){v.state='idle';v.tEn=null;return;}
     const ex=e.w?(e.x+e.w/2):e.x, ey=e.h?(e.y+e.h/2):e.y;
@@ -1334,7 +1377,7 @@ function updateCombat(v,dt){
         }}}
     else{v.state='chase';v.tx=ex;v.ty=ey;}
   }
-  if(v.team==='player'&&v.type!=='villager'&&v.state==='idle'){
+  if(v.team==='player'&&v.type!=='villager'&&v.type!=='monk'&&v.state==='idle'){
     const ce=units.find(u=>u.team==='enemy'&&u.hp>0&&Math.hypot(u.x-v.x,u.y-v.y)<v.rng*1.5);
     if(ce){v.tEn=ce;v.state='attack';}
   }
@@ -1355,6 +1398,8 @@ function updateTowers(dt){
 let eaiTimer=0;const EAI_INTERVAL=2;
 // ---- 敵方 AI (難度分級) ----
 let aiDiff='normal',aiPers='balanced',dayCycleOn=true,curFormation='box',placingType=null; // AI 難度 + 個性 + 日夜開關 + 陣型 + 放置模式
+let victCond='tc'; // 勝利條件: 'tc'=摧毀主堡, 'annihilate'=殲滅全軍, 'timed'=15分鐘計分
+try{const v=localStorage.getItem('victCond');if(v)victCond=v;}catch(e){}
 try{const d=localStorage.getItem('aiDiff');if(d)aiDiff=d;}catch(e){}
 try{const d=localStorage.getItem('aiPers');if(d)aiPers=d;}catch(e){}
 window.setAiDiff=d=>{aiDiff=d;localStorage.setItem('aiDiff',d);showStatus('AI難度: '+d);};
@@ -1489,6 +1534,9 @@ function applyTech(key,team='player'){
   if(key==='iron'){for(const u of units){if(u.team===team&&u.type!=='villager')u.atk+=5;}showStatus('⚔️ '+team+'軍隊攻擊+5');}
   if(key==='shield'){for(const u of units){if(u.team===team&&u.type!=='villager'){u.mh=Math.round(u.mh*1.2);u.hp=Math.min(u.hp+Math.round(u.mh*.1),u.mh);}}showStatus('🛡️ '+team+'軍隊生命+20%');}
   if(key==='range'){for(const u of units){if(u.team===team&&(u.type==='archer'||u.type==='mass_archer')){u.rng=Math.round(u.rng*1.3);u.atk+=3;}}showStatus('🏹 '+team+'弓兵射程+30% 攻擊+3');}
+  if(key==='fortwall'){for(const b of buildings){if(b.team===team&&b.type==='wall'&&b.complete){b.maxHp=Math.round(b.maxHp*1.5);b.hp=Math.min(b.hp+Math.round(b.maxHp*.33),b.maxHp);}}showStatus('🧱 '+team+'城牆生命+50%');}
+  if(key==='horsespd'){for(const u of units){if(u.team===team&&(u.type==='horseman'||u.type==='knight'))u.sp=Math.round(u.sp*1.15);}showStatus('🐴 '+team+'騎兵速度+15%');}
+  if(key==='goldmine'){for(const u of units){if(u.type==='villager'&&u.team===team)u.gi=Math.max(.18,u.gi*.8);}showStatus('💰 '+team+'金礦採集快20%');}
 }
 function spawnWave(){
   waveNum++;waveNumEl.textContent=waveNum;stats.wavesCleared=waveNum-1;
@@ -1520,6 +1568,21 @@ function update(dt){
   units.forEach(v=>{updateVil(v,dt);updateCombat(v,dt);});
   gameTime+=dt;updateTowers(dt);if(!mp.ready)enemyAI(dt);updateAge(dt);updateProjs(dt);
   if(Math.floor((gameTime-dt)/10)<Math.floor(gameTime/10))recordTimeline();
+  // 僧侶治療：掃描附近受傷友軍並治療
+  for(const u of units){if(u.type==='monk'&&u.hp>0&&u.state==='idle'){
+    const hurt=units.find(a=>a.team===u.team&&a.hp>0&&a.hp<a.mh&&a!==u&&Math.hypot(a.x-u.x,a.y-u.y)<u.rng);
+    if(hurt){u.tx=hurt.x;u.ty=hurt.y;u.state='moving';u.tEn=null;}
+    else u.state='idle';
+  }}
+  for(const u of units){if(u.type==='monk'&&u.hp>0&&u.state==='moving'){
+    const hurt=units.find(a=>a.team===u.team&&a.hp>0&&a.hp<a.mh&&a!==u&&Math.hypot(a.x-u.x,a.y-u.y)<u.rng);
+    if(hurt&&Math.hypot(u.x-hurt.x,u.y-hurt.y)<u.rng+30){
+      u.tx=u.x;u.ty=u.y;u.state='idle';
+      const healAmt=(UNIT_DEFS.monk.heal||6)*dt;
+      hurt.hp=Math.min(hurt.mh,hurt.hp+healAmt);
+      if(Math.random()<.3)spawnFx(hurt.x,hurt.y,'#80ff80',3);
+    }
+  }}
   for(const u of units){
     if(u.team==='player'&&u.hp>0&&u.hp<u.mh){
       const healR=techs.heal.done?10:5;
@@ -1536,13 +1599,28 @@ function update(dt){
   if(dsEnabled){dsTimer+=dt;if(dsTimer>DS_INTERVAL){dsTimer=0;callDeepSeek();}}
   if(tc.hp<=0)endGame(false);
   if(etc.hp<=0)endGame(true);
+  // 勝利條件
+  if(!isGameOver){
+    if(victCond==='annihilate'){
+      const plAlive=units.some(u=>u.team==='player'&&u.hp>0);
+      const enAlive=units.some(u=>u.team==='enemy'&&u.hp>0);
+      const plTC=tc.hp>0,enTC=etc.hp>0;
+      if(!plAlive&&!plTC)endGame(false);
+      if(!enAlive&&!enTC)endGame(true);
+    }
+    if(victCond==='timed'&&gameTime>=900){ // 15分鐘計分
+      const score=(pl,en)=>(units.filter(u=>u.team===pl&&u.hp>0).length*10+units.filter(u=>u.team===pl&&u.type!=='villager'&&u.hp>0).length*20+stats.kills*5)-(stats.losses*5);
+      const pScore=score('player','enemy'),eScore=score('enemy','player');
+      endGame(pScore>=eScore);
+    }
+  }
   for(let i=fx.length-1;i>=0;i--){const p=fx[i];p.x+=p.vx*dt;p.y+=p.vy*dt;
     p.vx*=.82;p.vy*=.82;p.life-=dt*2.5;if(p.life<=0)fx.splice(i,1);}
   if(statusTimer>0){statusTimer-=dt;if(statusTimer<=0)statusEl.style.opacity=0;}
   if(alertTimer>0)alertTimer-=dt;
   regrowResources(dt);
   musicTick(dt);
-  upPop();rdMenu();upIdle();upGrpLabels();camKeys(dt);
+  upPop();rdMenu();upIdle();upGrpLabels();camKeys(dt);checkTutorial(dt);
   if(mp.ready&&mp.role==='host'){
     snapAcc+=dt;if(snapAcc>=.12){snapAcc=0;sendSnap();}
     timerEl.textContent='🌐 對戰中';
@@ -1558,7 +1636,7 @@ function rdMenu(){
   const show=(id,cond)=>{const e=document.getElementById(id);if(!e)return e;e.style.display=cond?'':'none';return e;};
   const en=(id,cond)=>{const e=document.getElementById(id);if(e)e.disabled=!cond;};
   gm.style.display='flex';
-  const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnAutoVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3','btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>show(id,0));
+  const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnAutoVil','btnSword','btnArch','btnHorse','btnCata','btnMonk','btnScout','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3','btnTW1','btnTW2','btnTW3','btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>show(id,0));
   const ai=ageIdx(currentAge);
   const isGuest=mp.ready&&mp.role==='guest';
   const vs=sel.filter(u=>u.type==='villager'&&u.team===MYTEAM);
@@ -1587,6 +1665,9 @@ function rdMenu(){
       en('btnT2',!eT.military.done&&!erq&&ecAfford(eT.military.cost));show('btnT2',!eT.military.done);
       en('btnT3',!eT.speed.done&&!erq&&ecAfford(eT.speed.cost));show('btnT3',!eT.speed.done);
       en('btnT4',!eT.heal.done&&!erq&&ecAfford(eT.heal.cost));show('btnT4',!eT.heal.done);
+	      en('btnTW1',!eT.fortwall.done&&!erq&&ecAfford(eT.fortwall.cost));show('btnTW1',!eT.fortwall.done);
+	      en('btnTW2',!eT.horsespd.done&&!erq&&ecAfford(eT.horsespd.cost));show('btnTW2',!eT.horsespd.done);
+	      en('btnTW3',!eT.goldmine.done&&!erq&&ecAfford(eT.goldmine.cost));show('btnTW3',!eT.goldmine.done);
       if(erq){const t=eTechs[eResearchQueue];show('bmenuLabel',1).textContent=`🔬${t.name}`;}
       const gNextAge=AGES[ecAge]?.next;
       if(gNextAge&&!ecUpg){
@@ -1601,6 +1682,9 @@ function rdMenu(){
     en('btnT2',!techs.military.done&&!rq&&canAfford(techs.military.cost));show('btnT2',!techs.military.done);
     en('btnT3',!techs.speed.done&&!rq&&canAfford(techs.speed.cost));show('btnT3',!techs.speed.done);
     en('btnT4',!techs.heal.done&&!rq&&canAfford(techs.heal.cost));show('btnT4',!techs.heal.done);
+	    en('btnTW1',!techs.fortwall.done&&!rq&&canAfford(techs.fortwall.cost));show('btnTW1',!techs.fortwall.done);
+	    en('btnTW2',!techs.horsespd.done&&!rq&&canAfford(techs.horsespd.cost));show('btnTW2',!techs.horsespd.done);
+	    en('btnTW3',!techs.goldmine.done&&!rq&&canAfford(techs.goldmine.cost));show('btnTW3',!techs.goldmine.done);
     if(rq){const t=techs[rq];show('bmenuLabel',1).textContent=`🔬${t.name} ${Math.floor(t.rt/t.rtime*100)}%`;}
     const nextAge=AGES[currentAge]?.next;
     if(nextAge&&!ageUpgrading){
@@ -1622,12 +1706,17 @@ function rdMenu(){
     if(ai>=1||isGuest){en('btnCata',canAfford(UNIT_DEFS.catapult.cost)&&room);show('btnCata',1);}
     if(ai>=2||isGuest){en('btnKnight',canAfford(UNIT_DEFS.knight.cost)&&room);show('btnKnight',1);}
     if(ai>=2||isGuest){en('btnMassArm',canAfford(UNIT_DEFS.mass_archer.cost)&&room);show('btnMassArm',1);}
+	    if(ai>=2||isGuest){en('btnMonk',canAfford(UNIT_DEFS.monk.cost)&&room);show('btnMonk',1);}
+	    en('btnScout',canAfford(UNIT_DEFS.scout.cost)&&room);show('btnScout',1);
   }else if(selectedBldg&&selectedBldg.type==='blacksmith'&&selectedBldg.complete&&selectedBldg.team===MYTEAM){
     hideAll();show('bmenuLabel',1).textContent='⚒️鍛造廠';
     const rq=isGuest?eResearchQueue:researchQueue;const T=isGuest?eTechs:techs;
     en('btnBS1',!T.iron.done&&!rq&&canAfford(T.iron.cost));show('btnBS1',!T.iron.done);
     en('btnBS2',!T.shield.done&&!rq&&canAfford(T.shield.cost));show('btnBS2',!T.shield.done);
     en('btnBS3',!T.range.done&&!rq&&canAfford(T.range.cost));show('btnBS3',!T.range.done);
+	    en('btnTW1',!T.fortwall.done&&!rq&&canAfford(T.fortwall.cost));show('btnTW1',!T.fortwall.done);
+	    en('btnTW2',!T.horsespd.done&&!rq&&canAfford(T.horsespd.cost));show('btnTW2',!T.horsespd.done);
+	    en('btnTW3',!T.goldmine.done&&!rq&&canAfford(T.goldmine.cost));show('btnTW3',!T.goldmine.done);
     if(rq){const t=T[rq];show('bmenuLabel',1).textContent=`🔬${t.name} ${Math.floor(t.rt/t.rtime*100)}%`;}
   }else if(selectedBldg&&selectedBldg.complete){
     hideAll();
@@ -1647,7 +1736,7 @@ function rdMenu(){
   }else{gm.style.display='none';}
 }
 // 單位資訊面板
-const UNIT_ICONS={villager:'👨‍🌾',swordsman:'⚔️',spearman:'🗡️',archer:'🏹',horseman:'🐴',knight:'🛡️',mass_archer:'🏹',catapult:'🪨'};
+const UNIT_ICONS={villager:'👨‍🌾',swordsman:'⚔️',spearman:'🗡️',archer:'🏹',horseman:'🐴',knight:'🛡️',mass_archer:'🏹',catapult:'🪨',monk:'🙏',scout:'🔭'};
 function updateUnitInfo(){
   const p=document.getElementById('unitInfo');if(!p)return;
   const sel=selected();
@@ -1927,7 +2016,8 @@ function makeCatapult(en){
 }
 // ---- KayKit 真模型 ----
 const CHAR_SRC={villager:'assets/Barbarian.glb',swordsman:'assets/Knight.glb',archer:'assets/Rogue_Hooded.glb',
-  spearman:'assets/Knight.glb',mass_archer:'assets/Rogue_Hooded.glb'};
+  spearman:'assets/Knight.glb',mass_archer:'assets/Rogue_Hooded.glb',
+  monk:'assets/Rogue_Hooded.glb',scout:'assets/Knight.glb'};
 const charLib={};let horseLib=null;
 const gltfLoader=new GLTFLoader();
 const loadGLB=url=>new Promise((res,rej)=>gltfLoader.load(url,res,undefined,rej));
@@ -1958,6 +2048,8 @@ const TINTS={
   villager:{player:null,enemy:0xc03030,amt:.3},
   swordsman:{player:null,enemy:0xc03030,amt:.3},
   archer:{player:null,enemy:0xc03030,amt:.3},
+  monk:{player:0xe8e8f0,enemy:0xc0a030,amt:.6},
+  scout:{player:0xc8a870,enemy:0xc06030,amt:.5},
 };
 function makeGLBUnit(u){
   const en=u.team==='enemy';
@@ -2295,10 +2387,18 @@ function drawMinimap(){
     const px=Math.max(0,Math.min(180,w.x*sx)),py=Math.max(0,Math.min(135,w.y*sy));
     i===0?mctx.moveTo(px,py):mctx.lineTo(px,py);});
   mctx.closePath();mctx.stroke();
+  // 攻擊警報紅點（3秒淡出）
+  if(alertTimer>0){
+    const alpha=Math.min(1,alertTimer/2.0);
+    mctx.fillStyle=`rgba(255,40,40,${alpha})`;
+    const ax=alertCX*180/WORLD.w,ay=alertCY*135/WORLD.h;
+    const r=Math.max(4,10-alpha*6);
+    mctx.beginPath();mctx.arc(ax,ay,r,0,7);mctx.fill();
+  }
 }
 // ================= 多人對戰（PeerJS P2P，host 權威） =================
 const ST_IDS=['idle','moving','gathering','returning','building','chase','attack','villagerWait'];
-const TYPE_IDS=['villager','swordsman','spearman','archer','horseman','knight','mass_archer','catapult'];
+const TYPE_IDS=['villager','swordsman','spearman','archer','horseman','knight','mass_archer','catapult','monk','scout'];
 const BTYPE_IDS=Object.keys(BUILD_DEFS);
 const guestUnits=new Map(),guestBldgs=new Map();
 let snapAcc=0;
@@ -2315,10 +2415,12 @@ function applyGameSettings(role){
     const res=document.getElementById('lbRes')?.value||'std';
     const ai=document.getElementById('lbAi')?.value||'normal';
     const day=document.getElementById('lbDay')?.value||'on';
-    const sets={res,ai,day};
+    const vict=document.getElementById('lbVict')?.value||'tc';
+    victCond=vict;localStorage.setItem('victCond',vict);
+    const sets={res,ai,day,vict};
     localStorage.setItem('gameSettings',JSON.stringify(sets));
     // send to guest via MP
-    if(mp.send)mp.send({c:'settings',res,ai,day});
+    if(mp.send)mp.send({c:'settings',res,ai,day,vict});
   }
   const sets=JSON.parse(localStorage.getItem('gameSettings')||'{}');
   // 應用資源設定
@@ -2340,7 +2442,9 @@ window.startSinglePlayer=()=>{
   const res=document.getElementById('lbRes')?.value||'std';
   const ai=document.getElementById('lbAi')?.value||'normal';
   const day=document.getElementById('lbDay')?.value||'on';
-  const sets={res,ai,day};
+  const vict=document.getElementById('lbVict')?.value||'tc';
+  victCond=vict;localStorage.setItem('victCond',vict);
+  const sets={res,ai,day,vict};
   localStorage.setItem('gameSettings',JSON.stringify(sets));
   // 應用資源
   if(sets.res==='rich'){wood=500;food=500;stone=200;gold=200;
@@ -2524,7 +2628,7 @@ function hostRecv(d){
   }
 }
 function guestRecv(d){
-  if(d.c==='settings'){localStorage.setItem('gameSettings',JSON.stringify({res:d.res,ai:d.ai,day:d.day}));applyGameSettings('guest');return;}
+  if(d.c==='settings'){localStorage.setItem('gameSettings',JSON.stringify({res:d.res,ai:d.ai,day:d.day,vict:d.vict}));if(d.vict)victCond=d.vict;applyGameSettings('guest');return;}
   if(d.c==='init'){
     const rebuild=(arr,data,maker,rr,ty)=>{
       for(const o of arr)if(o.mesh)scene.remove(o.mesh);
@@ -2615,7 +2719,7 @@ function updateFog(dt){
     for(let gy=gy0;gy<=gy1;gy++)for(let gx=gx0;gx<=gx1;gx++){
       const cx=gx*c+c/2,cy=gy*c+c/2;
       if((cx-x)*(cx-x)+(cy-y)*(cy-y)<=r*r){const i=gy*FOG.W+gx;FOG.vis[i]=1;FOG.exp[i]=1;}}};
-  for(const u of units)if(u.team===MYTEAM&&u.hp>0)mark(u.x,u.y,240);
+  for(const u of units)if(u.team===MYTEAM&&u.hp>0)mark(u.x,u.y,u.type==='scout'?280:240);
   for(const b of buildings)if(b.team===MYTEAM&&b.complete&&b.hp>0)
     mark(b.x+b.w/2,b.y+b.h/2,(b.type==='tower'||b.type==='castle_bldg')?340:200);
   const myTC=MYTEAM==='player'?tc:etc;
@@ -2669,6 +2773,7 @@ window.setFog=setFog;
   const sets=JSON.parse(localStorage.getItem('gameSettings')||'{}');
   if(sets.ai){aiDiff=sets.ai;setAiDiff(sets.ai);}
   if(sets.day==='off'){dayCycleOn=false;updateDayNight();}
+  if(sets.vict){victCond=sets.vict;localStorage.setItem('victCond',sets.vict);}
   if(sets.res==='rich'){wood=500;food=500;stone=200;gold=200;
     woodEl.textContent=wood;foodEl.textContent=food;stoneEl.textContent=stone;goldEl.textContent=gold;}
 })();
