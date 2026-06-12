@@ -1201,8 +1201,10 @@ function mvUnit(v,dt){
       if(nx>b.x-1&&nx<b.x+b.w+1&&ny>b.y-1&&ny<b.y+b.h+1){blocked=true;break;}
     }
     if(blocked){
-      // 試 A* 繞路
-      if(!v.path||v.path.length===0){
+      // 試 A* 繞路（cooldown 防止 chase 單位每幀重跑全圖 A* 拖死 FPS）
+      v.rpT=(v.rpT||0)-dt;
+      if((!v.path||v.path.length===0)&&v.rpT<=0){
+        v.rpT=.8+Math.random()*.6;
         v.path=aStar(v.x,v.y,v.tx,v.ty);v.pi=0;
         if(v.path&&v.path.length>0){v.tx=v.path[0].x;v.ty=v.path[0].y;}
         else{v.path=[];v.tx=v.x;v.ty=v.y;} // A* fail: stop
