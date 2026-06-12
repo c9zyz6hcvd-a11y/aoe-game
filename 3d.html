@@ -79,6 +79,10 @@
   #statsPanel td{padding:4px 18px;border-bottom:1px solid #333;}
   #statsPanel td:first-child{color:#aaa;text-align:right;}
   #statsPanel td:last-child{color:#ffd250;font-weight:bold;text-align:left;}
+  #alert{position:fixed;inset:0;border:0px solid transparent;pointer-events:none;z-index:100;transition:border-color .15s;}
+  #alert.on{border:4px solid #ff3030;border-color:#ff3030;transition:border-color 0s;}
+  #alertDot{position:fixed;width:18px;height:18px;border-radius:50%;background:red;pointer-events:none;z-index:101;
+    opacity:0;transform:translate(-50%,-50%);transition:opacity .2s;}
 </style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}</script>
 </head>
@@ -156,10 +160,12 @@
 </div>
 <div id="grpLabels"></div>
 <div id="ageUpProgress">⬆️ 升級中… <span id="ageUpPct">0%</span></div>
+<div id="alert"></div><div id="alertDot"></div>
 <div id="statsPanel">
   <div id="spIcon" style="font-size:56px;margin-bottom:8px;"></div>
   <div id="spTitle" style="font-size:26px;font-weight:bold;margin-bottom:4px;"></div>
-  <div id="spSub" style="font-size:13px;color:#aaa;margin-bottom:16px;"></div>
+  <div id="spSub" style="font-size:13px;color:#aaa;margin-bottom:12px;"></div>
+  <canvas id="tlChart" width="340" height="160" style="margin:8px 0;border-radius:6px;background:rgba(0,0,0,.4);"></canvas>
   <table id="spTable"></table>
   <button onclick="location.reload()" style="margin-top:16px;font-size:16px;padding:12px 32px;
     background:#ffd250;color:#111;border:none;border-radius:10px;cursor:pointer;font-weight:bold;">再玩一局</button>
@@ -384,18 +390,46 @@ const UNIT_DEFS={
   catapult:  {name:'投石車',sp:70, hp:120,atk:50,rng:220,cd:3.5,cost:{food:60,wood:80,stone:30},  sz:28, ageReq:'feudal', splash:65},
 };
 const buildings=[];let selectedBldg=null;
-function canPlace(x,y,bw,bh){
+const garrisonMap=new Map(); // building id → [{unit data}]
+const GARRISON_CAP={tc:10,tower:5,castle_bldg:15}; // 駐軍上限
+function garrisonUnit(b){
+  if(!b||!b.id)return;const cap=GARRISON_CAP[b.type]||0;if(!cap)return;
+  let g=garrisonMap.get(b.id);if(!g){g=[];garrisonMap.set(b.id,g);}
+  if(g.length>=cap){showStatus('駐軍已滿');return;}
+  const nearby=units.filter(u=>u.team===b.team&&u.hp>0&&u.state==='idle'&&
+    Math.hypot(u.x-(b.x+b.w/2),u.y-(b.y+b.h/2))<80).slice(0,cap-g.length);
+  if(!nearby.length){showStatus('附近沒有可駐軍單位');return;}
+  nearby.forEach(u=>{
+    g.push({type:u.type,hp:u.hp,mh:u.mh,atk:u.atk,sp:u.sp,rng:u.rng,sz:u.sz,hat:u.hat,dir:u.dir,team:u.team});
+    if(u.mesh){scene.remove(u.mesh);u.mesh=null;u.mixer=null;u.actions=null;}
+    const idx=units.indexOf(u);if(idx>=0)units.splice(idx,1);});
+  if(b.atk!==undefined)b.atk=(b.atk||0)+nearby.length; // 攻擊力加成
+  upPop();showStatus(`🏰 駐軍 ${nearby.length}人 (共${g.length}/${cap})`);}
+function ungarrisonUnit(b){
+  const g=garrisonMap.get(b.id);if(!g||!g.length){showStatus('無駐軍');return;}
+  const released=g.splice(0,g.length);
+  released.forEach(u=>{
+    const nu=makeUnit(b.x+b.w/2-10+Math.random()*20,b.y+b.h+16,u.type,u.team);
+    nu.hp=u.hp;nu.mh=u.mh;nu.atk=u.atk;nu.sp=u.sp;nu.rng=u.rng;nu.dir=u.dir;
+    nu.tx=b.x+b.w/2+(Math.random()-.5)*60;nu.ty=b.y+b.h+30+Math.random()*20;nu.state='moving';
+    units.push(nu);});
+  if(b.atk!==undefined)b.atk=Math.max(0,(b.atk||0)-released.length);
+  garrisonMap.delete(b.id);upPop();showStatus(`📤 放出 ${released.length}人`);}
+function hasGarrison(b){const g=garrisonMap.get(b.id);return g&&g.length>0;}
+function garrisonCount(b){const g=garrisonMap.get(b.id);return g?g.length:0;}
+function canPlace(x,y,bw,bh,bt){
   if(x<20||y<20||x+bw>WORLD.w-20||y+bh>WORLD.h-20)return 0;
   if(x<tc.x+tc.w+20&&x+bw>tc.x-20&&y<tc.y+tc.h+20&&y+bh>tc.y-20)return 0;
   if(x<etc.x+etc.w+20&&x+bw>etc.x-20&&y<etc.y+etc.h+20&&y+bh>etc.y-20)return 0;
   for(const t of trees)if(t.res>0&&t.x>x-12&&t.x<x+bw+12&&t.y>y-12&&t.y<y+bh+12)return 0;
   for(const b of[...buildings]){if(!b.complete)continue;
-    if(b.x<x+bw+15&&b.x+b.w>x-15&&b.y<y+bh+15&&b.y+b.h>y-15)return 0;}
+    const gap=(bt==='wall'||b.type==='wall')?2:15; // 牆可貼近
+    if(b.x<x+bw+gap&&b.x+b.w>x-gap&&b.y<y+bh+gap&&b.y+b.h>y-gap)return 0;}
   return 1;
 }
-function findSpot(cx,cy,bw,bh){
+function findSpot(cx,cy,bw,bh,bt){
   for(const{dx,dy}of[{dx:0,dy:0},{dx:-130,dy:0},{dx:130,dy:0},{dx:0,dy:-120},{dx:0,dy:120},{dx:-150,dy:-110},{dx:150,dy:-110},{dx:-150,dy:110},{dx:150,dy:110},{dx:-220,dy:0},{dx:220,dy:0},{dx:0,dy:-190},{dx:0,dy:190}]){
-    const x=cx+dx-bw/2,y=cy+dy-bh/2;if(canPlace(x,y,bw,bh))return{x,y};}
+    const x=cx+dx-bw/2,y=cy+dy-bh/2;if(canPlace(x,y,bw,bh,bt))return{x,y};}
   return null;
 }
 function canAfford(c){return(!c.wood||wood>=c.wood)&&(!c.food||food>=c.food)&&(!c.stone||stone>=c.stone)&&(!c.gold||gold>=c.gold);}
@@ -410,7 +444,7 @@ function startBuild(type){
   if(!vls.length){showStatus('選取村民');return;}
   if(!canAfford(def.cost)){showStatus('資源不足');return;}
   const ax=vls.reduce((s,v)=>s+v.x,0)/vls.length,ay=vls.reduce((s,v)=>s+v.y,0)/vls.length;
-  const sp=findSpot(ax,ay,def.w,def.h);if(!sp){showStatus('找不到空地');return;}
+  const sp=findSpot(ax,ay,def.w,def.h,type);if(!sp){showStatus('找不到空地');return;}
   spend(def.cost);
   const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type,hp:1,maxHp:def.hp||200,name:def.name,
     p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'player',
@@ -501,6 +535,38 @@ function doResearch(key){
 // ---- TC ----
 const tc={x:WORLD.w/2-280,y:WORLD.h/2-40,w:100,h:100,hp:1000,mh:1000,team:'player'};
 const etc={x:WORLD.w-250,y:WORLD.h/2-40,w:100,h:100,hp:1000,mh:1000,team:'enemy'};
+// 時間線數據 (每10秒記錄)
+const timeline=[];
+function recordTimeline(){
+  const pm=units.filter(u=>u.team==='player'&&u.type!=='villager'&&u.hp>0).length;
+  const pv=units.filter(u=>u.team==='player'&&u.type==='villager'&&u.hp>0).length;
+  timeline.push({t:Math.floor(gameTime),w:wood,f:food,s:stone,g:gold,m:pm,v:pv,k:stats.kills,l:stats.losses});
+}
+function drawTimeline(){
+  const c=document.getElementById('tlChart');if(!c||timeline.length<2)return;
+  const ctx=c.getContext('2d');const W2=c.width,H2=c.height;ctx.clearRect(0,0,W2,H2);
+  const pad=30;const gw=W2-pad*2,gh=H2-pad*2;
+  const maxT=timeline[timeline.length-1].t||1;
+  let maxV=10;for(const p of timeline){maxV=Math.max(maxV,p.w+p.f+p.s+p.g,p.m*8,p.v*5,p.k*6);}
+  const sx=t=>pad+(t/maxT)*gw,sy=v=>pad+gh-(v/Math.max(1,maxV))*gh;
+  // grid + labels
+  ctx.fillStyle='#aaa';ctx.font='9px sans-serif';ctx.textAlign='center';
+  for(let i=0;i<=4;i++){const y=pad+gh*i/4;ctx.fillStyle='#333';ctx.fillRect(pad,y,gw,1);ctx.fillStyle='#aaa';ctx.fillText(Math.round(maxV*(1-i/4)),pad-4,y+3);}
+  ctx.fillText('0',pad-4,pad+gh+3);ctx.fillText(maxT+'s',W2-pad,pad+gh+16);
+  // legend
+  const series=[{name:'資源',key:['w','f','s','g'],color:'#f4d03f',sum:1},
+    {name:'軍事',key:['m'],color:'#4a90e0',mul:8},{name:'村民',key:['v'],color:'#80e080',mul:5},{name:'擊殺',key:['k'],color:'#e04040',mul:6}];
+  ctx.font='9px sans-serif';let lx=pad;
+  for(const s of series){ctx.fillStyle=s.color;ctx.fillText(s.name,lx,12);lx+=ctx.measureText(s.name).width+16;}
+  // draw lines
+  for(const s of series){
+    ctx.strokeStyle=s.color;ctx.lineWidth=1.5;ctx.beginPath();
+    for(let i=0;i<timeline.length;i++){
+      let v=0;for(const k of s.key)v+=(timeline[i][k]||0)*(s.mul||1);
+      const x=sx(timeline[i].t),y=sy(v);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();}
+}
 // 勝負 + 戰績
 let isGameOver=false;
 function getRecord(){try{const d=JSON.parse(localStorage.getItem('rts3d_rec')||'{}');return{wins:d.wins||0,losses:d.losses||0,elo:d.elo||1000,kills:d.kills||0,deaths:d.deaths||0};}catch(e){return{wins:0,losses:0,elo:1000,kills:0,deaths:0};}}
@@ -537,6 +603,7 @@ function endGame(win){
   ];
   document.getElementById('spTable').innerHTML=rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
   sp.style.display='flex';
+  drawTimeline();
 }
 function tcCenter(t=tc){return{x:t.x+t.w/2,y:t.y+t.h/2};}
 // ---- 地圖資源 ----
@@ -685,12 +752,22 @@ function spawnProj(o){ // {x,y,h0,type,tx,ty,target?,dmg,team,splash?}
   if(mp.ready&&mp.role==='host'&&o.team!=='fx')
     mp.send({c:'proj',x:o.x,y:o.y,h0:o.h0,t2:o.type,tx:o.tx,ty:o.ty});
 }
+let alertTimer=0,alertCX=0,alertCY=0;
 function dealDamage(t,dmg,fromTeam){
   if(!t||t.hp===undefined||t.hp<=0)return;
   if(t.team===fromTeam)return;
   t.hp-=dmg;
   const cx=t.w?t.x+t.w/2:t.x,cy=t.h?t.y+t.h/2:t.y;
   spawnFx(cx,cy,'#ff4040',4);
+  // 攻擊警報：玩家單位/建築被攻擊
+  if(t.team===MYTEAM&&alertTimer<=0){
+    alertTimer=2.0;alertCX=cx;alertCY=cy;
+    document.getElementById('alert').classList.add('on');
+    setTimeout(()=>document.getElementById('alert').classList.remove('on'),400);
+    const dot=document.getElementById('alertDot');dot.style.opacity='1';
+    const pp=proj(cx,cy,2);dot.style.left=pp.x+'px';dot.style.top=pp.y+'px';
+    setTimeout(()=>{dot.style.opacity='0';},600);
+    play(200,500,.15,.25,'square');}
   if(t.hp<=0){playDeath();spawnFx(cx,cy,'#ff8030',20);
     const isTc=(t===tc||t===etc);
     if(!isTc&&!t.w){
@@ -733,6 +810,18 @@ function blockedSet(){
   for(const b of[tc,etc,...buildings]){if(!b.complete&&b!==tc&&b!==etc)continue;
     const gx=~~(b.x/WORLD.T),gy=~~(b.y/WORLD.T),gw=Math.ceil((b.w||100)/WORLD.T),gh=Math.ceil((b.h||100)/WORLD.T);
     for(let dx=0;dx<gw;dx++)for(let dy=0;dy<gh;dy++)s.add((gx+dx)+','+(gy+dy));}
+  // 城牆連線：相鄰牆之間 block 空隙，形成連續防線
+  const walls=buildings.filter(b=>b.type==='wall'&&b.complete);
+  for(let i=0;i<walls.length;i++){
+    for(let j=i+1;j<walls.length;j++){
+      const a=walls[i],b=walls[j];
+      const cxA=a.x+a.w/2,cyA=a.y+a.h/2,cxB=b.x+b.w/2,cyB=b.y+b.h/2;
+      if(Math.hypot(cxA-cxB,cyA-cyB)<56){ // 牆距 <56px 視為連接
+        const mx=(cxA+cxB)/2,my=(cyA+cyB)/2;
+        s.add(~~(mx/WORLD.T)+','+~~(my/WORLD.T));
+        // 額外 block 防止斜角穿過
+        s.add(~~(cxA/WORLD.T)+','+~~(cyB/WORLD.T));
+        s.add(~~(cxB/WORLD.T)+','+~~(cyA/WORLD.T));}}}
   for(const u of units){if(u.hp<=0)continue;const gx=~~(u.x/WORLD.T),gy=~~(u.y/WORLD.T);s.add(gx+','+gy);}
   return s;
 }
@@ -846,6 +935,11 @@ function edgeOf(t,v){const d=Math.hypot(t.x-v.x,t.y-v.y)||.001;return{x:t.x+(v.x
 function issueCmd(wx,wy,list){
   const sel=list||selected();if(!sel.length)return;
   if(!list)selectedBldg=null;
+  // Shift+Click: 排 waypoint（唔取代而家嘅指令）
+  const shift=!!keys.Shift;
+  if(shift&&!list){
+    sel.forEach(u=>{if(!u.waypoints)u.waypoints=[];u.waypoints.push({x:wx,y:wy});});
+    playClick();spawnFx(wx,wy,'#80d0ff',5);showStatus(`➕ ${sel.length}人加途徑點`);return;}
   // 多人 guest：指令送俾主機執行
   if(!list&&mp.ready&&mp.role==='guest'){
     mp.send({c:'cmd',ids:sel.map(u=>u.i),x:Math.round(wx),y:Math.round(wy)});
@@ -853,7 +947,7 @@ function issueCmd(wx,wy,list){
   const team=sel[0].team;
   const he=findEnemyAt(wx,wy,team);
   const vils=sel.filter(u=>u.type==='villager');
-  if(he){sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=he;u.state='chase';u.path=null;});
+  if(he){sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=he;u.state='chase';u.path=null;u.waypoints=[];});
     showStatus('攻擊！');playClick();spawnFx(wx,wy,'#ff4040',8);return;}
   const ht=trees.find(t=>t.res>0&&Math.hypot(t.x-wx,t.y-wy)<t.r+12);
   const hb=bushes.find(b=>b.res>0&&Math.hypot(b.x-wx,b.y-wy)<b.r+12);
@@ -863,9 +957,9 @@ function issueCmd(wx,wy,list){
   if(hRes&&vils.length){const pool=(hRes.type==='wood'?trees:hRes.type==='food'?bushes:hRes.type==='gold'?goldMines:stones).filter(r=>r.res>0)
     .sort((a,b)=>Math.hypot(a.x-wx,a.y-wy)-Math.hypot(b.x-wx,b.y-wy));
     vils.forEach((v,i)=>{const t=pool[i%pool.length];
-      v.tRes=t;v.gType=t.type;v.state='moving';v.tBldg=null;v.tEn=null;v.path=null;
+      v.tRes=t;v.gType=t.type;v.state='moving';v.tBldg=null;v.tEn=null;v.path=null;v.waypoints=[];
       const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;});showStatus(vils.length>1?`${vils.length}人採集`:'採集');playClick();spawnFx(wx,wy,'#80ff80',6);return;}
-  sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=null;u.state='moving';});
+  sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=null;u.state='moving';u.waypoints=[];});
   sel.forEach((u,i)=>{const r=Math.floor(i/4),c=i%4;u.tx=wx+(c-1.5)*25;u.ty=wy+r*25;u.path=null;});
   // A-Move: 軍事單位移動中自動接敵
   sel.filter(u=>u.type!=='villager').forEach(u=>{
@@ -957,7 +1051,12 @@ function mvUnit(v,dt){
     if(v.state==='moving'){
       if(v.tRes&&v.tRes.res>0)v.state='gathering';
       else if(v.tEn&&v.tEn.hp>0)v.state='chase';
-      else if(!v.tRes&&!v.tEn)v.state='idle';}
+      else if(!v.tRes&&!v.tEn){
+        // Waypoint queue: 到站就 pop 下一個途徑點
+        if(v.waypoints&&v.waypoints.length>0){
+          const wp=v.waypoints.shift();v.tx=wp.x;v.ty=wp.y;v.state='moving';
+          if(v.type!=='villager'){v.path=aStar(v.x,v.y,wp.x,wp.y);v.pi=0;v.aMove=true;v.aMoveX=wp.x;v.aMoveY=wp.y;}
+        }else v.state='idle';}}
     if(v.state==='villagerWait'){v.state='idle';}
   }
   if(v.path&&v.path.length>v.pi){const wp=v.path[v.pi];if(Math.hypot(wp.x-v.x,wp.y-v.y)<20)v.pi++;
@@ -1078,14 +1177,24 @@ function updateTowers(dt){
 // ---- 敵方 AI ----
 let eaiTimer=0;const EAI_INTERVAL=2;
 // ---- 敵方 AI (難度分級) ----
-let aiDiff='normal'; // easy|normal|hard (localStorage)
+let aiDiff='normal',aiPers='balanced'; // AI 難度 + 個性
 try{const d=localStorage.getItem('aiDiff');if(d)aiDiff=d;}catch(e){}
+try{const d=localStorage.getItem('aiPers');if(d)aiPers=d;}catch(e){}
 window.setAiDiff=d=>{aiDiff=d;localStorage.setItem('aiDiff',d);showStatus('AI難度: '+d);};
+window.setAiPers=p=>{aiPers=p;localStorage.setItem('aiPers',p);showStatus('AI個性: '+p);};
 const AI_CFG={easy:{iv:2.0,eco:0.7,aggro:0.3,micro:0.4,cheat:0},
   normal:{iv:1.0,eco:1.0,aggro:0.7,micro:0.7,cheat:0},
   hard:{iv:0.55,eco:1.3,aggro:1.2,micro:1.0,cheat:0.08}};
+// AI 個性參數: {vilTarget, rushTime, defBldgPri, unitPref, ageRush}
+const PERS={
+  rusher:  {vilMax:10,rushSec:100,defPri:0,pref:'spearman', ageHurry:0,  ecoBias:0.6},
+  boomer:  {vilMax:18,rushSec:300,defPri:0,pref:'knight',   ageHurry:1.3,ecoBias:1.4},
+  turtler: {vilMax:12,rushSec:250,defPri:2,pref:'archer',   ageHurry:0.7,ecoBias:0.8},
+  balanced:{vilMax:14,rushSec:180,defPri:1,pref:'swordsman',ageHurry:1.0,ecoBias:1.0},
+};
 function enemyAI(dt){
   eaiTimer+=dt;const cfg=AI_CFG[aiDiff];if(eaiTimer<EAI_INTERVAL*cfg.iv)return;eaiTimer=0;
+  const pers=PERS[aiPers]||PERS.balanced; // 個性參數
   const eUnits=units.filter(u=>u.team==='enemy'&&u.hp>0);
   const eVils=eUnits.filter(u=>u.type==='villager');
   const eMil=eUnits.filter(u=>u.type!=='villager');
@@ -1104,7 +1213,7 @@ function enemyAI(dt){
   // cheat resource boost (Hard only)
   if(cfg.cheat>0&&Math.random()<cfg.cheat){eWood+=2;eFood+=2;eStone+=1;eGold+=1;}
   // === Phase 1: 爆經濟 (train villagers) ===
-  const wantVils=Math.min(14+cfg.eco*4,ePopCap);
+  const wantVils=Math.min(pers.vilMax+Math.floor(cfg.eco*3),ePopCap);
   if(eVils.length<wantVils&&eUnits.length<ePopCap&&eFood>=50){
     eFood-=50;const v=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+10,'villager','enemy');
     v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;units.push(v);
@@ -1114,7 +1223,7 @@ function enemyAI(dt){
   const buildIf=(cond,type,costCheck)=>{
     if(!cond||builtThisTick>0)return;const def=BUILD_DEFS[type];
     if(!costCheck(def))return;
-    const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60-Math.random()*80,def.w,def.h);
+    const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60-Math.random()*80,def.w,def.h,type);
     if(!sp)return;eWood-=(def.cost.wood||0);eFood-=(def.cost.food||0);eStone-=(def.cost.stone||0);eGold-=(def.cost.gold||0);
     const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type,hp:1,maxHp:def.hp||200,name:def.name,p:0,bt:def.bt,complete:0,pb:def.pb||0,team:'enemy'};
     buildings.push(b);const curVils=eUnits.filter(u=>u.type==='villager'&&u.state==='idle');
@@ -1124,13 +1233,17 @@ function enemyAI(dt){
   buildIf(!hasMill&&hasHouse,'mill',d=>eWood>=d.cost.wood&&eFood>=d.cost.food);
   buildIf(!hasBsk&&hasHouse,'barracks',d=>eWood>=d.cost.wood&&eFood>=d.cost.food);
   buildIf(hasBsk&&!hasBS&&eMil.length>=3,'blacksmith',d=>eWood>=d.cost.wood&&eGold>=d.cost.gold);
-  buildIf(!hasTower&&hasBsk&&eMil.length>=4&&eAge>=1,'tower',d=>eWood>=d.cost.wood&&eStone>=d.cost.stone);
+  buildIf(!hasTower&&hasBsk&&eMil.length>=(pers.defPri>=2?2:4)&&eAge>=1,'tower',d=>eWood>=d.cost.wood&&eStone>=d.cost.stone);
+  if(pers.defPri>=2&&hasTower){ // Turtler: 起多幾座箭塔
+    const towerCount=eBldgs.filter(b=>b.type==='tower'&&b.complete).length;
+    if(towerCount<3)buildIf(hasBsk&&eWood>=50&&eStone>=30,'tower',d=>eWood>=d.cost.wood&&eStone>=d.cost.stone);}
   // === Phase 3: 資源調度 ===
   for(const v of eVilIds){
-    const wantWood=eWood<80||!hasBsk||eUnits.length>=ePopCap;
-    const wantFood=eFood<100||eVils.length<wantVils;
-    const wantGold=eGold<60&&hasBS&&eAge>=1;
-    const wantStone=eStone<50&&hasBsk&&eAge>=1;
+    const eco=pers.ecoBias||1;
+    const wantWood=eWood<Math.floor(80*eco)||!hasBsk||eUnits.length>=ePopCap;
+    const wantFood=eFood<Math.floor(100*eco)||eVils.length<wantVils;
+    const wantGold=eGold<Math.floor(60*eco)&&hasBS&&eAge>=1;
+    const wantStone=eStone<Math.floor(50*eco)&&hasBsk&&eAge>=1;
     if(wantWood&&trees.some(t=>t.res>0)){const t=trees.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
       if(t){v.tRes=t;v.gType='wood';const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;v.state='moving';continue;}}
     if(wantFood&&bushes.some(b=>b.res>0)){const t=bushes.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
@@ -1142,9 +1255,10 @@ function enemyAI(dt){
   }
   // (Phase 4 removed — resource drop-off + gathering→return handled by updateVil)
   // === Phase 5: 時代升級 ===
-  if(!eAgeUpgrading&&eVils.length>=5&&hasMill&&eAge<1){ // Dark→Feudal
+  const hurryCost=(c)=>{const c2={};for(const k in c)c2[k]=Math.ceil(c[k]/(pers.ageHurry||1));return c2;}; // 年齡加速
+  if(!eAgeUpgrading&&eVils.length>=Math.ceil(5/pers.ageHurry)&&hasMill&&eAge<1){
     const a=AGES[eCurrentAge];if(a.next&&canAffordE(a.cost)){spendE(a.cost);eAgeUpgrading=true;eAgeTimer=0;}}
-  if(!eAgeUpgrading&&eVils.length>=7&&hasBS&&eAge>=1&&eAge<2){ // Feudal→Castle
+  if(!eAgeUpgrading&&eVils.length>=Math.ceil(7/pers.ageHurry)&&hasBS&&eAge>=1&&eAge<2){
     const a=AGES[eCurrentAge];if(a.next&&canAffordE(a.cost)){spendE(a.cost);eAgeUpgrading=true;eAgeTimer=0;}}
   // === Phase 6: 研究科技 ===
   if(!eResearchQueue&&hasBS&&eAge>=1){
@@ -1157,11 +1271,11 @@ function enemyAI(dt){
   if(hasBsk&&eMil.length<Math.min(14+cfg.aggro*6,30)&&eUnits.length<ePopCap){
     const playerHasHorse=pMil.filter(u=>u.type==='horseman'||u.type==='knight').length;
     const playerHasArch=pMil.filter(u=>u.type==='archer'||u.type==='mass_archer').length;
-    let prefType='swordsman';
+    let prefType=pers.pref||'swordsman';
     if(playerHasHorse>1)prefType='spearman'; // 騎兵多→出矛兵
     else if(playerHasArch>2)prefType='horseman'; // 弓兵多→出騎兵
-    else if(eAge>=1&&eGold>=60)prefType='horseman';
-    else if(Math.random()<.35)prefType='archer';
+    else if(eAge>=1&&eGold>=60&&pers.pref!=='spearman')prefType='horseman';
+    else if(Math.random()<.3&&pers.pref!=='knight')prefType='archer';
     const d=UNIT_DEFS[prefType];if(!d)return;
     if(eFood>=(d.cost.food||0)&&eWood>=(d.cost.wood||0)&&eStone>=(d.cost.stone||0)&&eGold>=(d.cost.gold||0)){
       eFood-=d.cost.food||0;eWood-=d.cost.wood||0;eStone-=d.cost.stone||0;eGold-=d.cost.gold||0;
@@ -1171,7 +1285,7 @@ function enemyAI(dt){
   // === Phase 8: 攻擊決策 ===
   const attReady=eMil.filter(u=>u.type!=='villager').length;
   const minAtt=aiDiff==='hard'?3:(aiDiff==='normal'?4:6);
-  if(gameTime>=150&&attReady>=minAtt){
+  if(gameTime>=pers.rushSec&&attReady>=minAtt){
     const attackChance=aiDiff==='hard'?.08:(aiDiff==='normal'?.05:.025);
     if(Math.random()<attackChance*cfg.aggro){
       const target=pMil[0]||pUnits[0]||tc;
@@ -1222,6 +1336,7 @@ function update(dt){
   for(const v of units){if(v.state==='building'&&v.tBldg&&v.tBldg.complete){v.state='idle';v.tBldg=null;}}
   units.forEach(v=>{updateVil(v,dt);updateCombat(v,dt);});
   gameTime+=dt;updateTowers(dt);if(!mp.ready)enemyAI(dt);updateAge(dt);updateProjs(dt);
+  if(Math.floor((gameTime-dt)/10)<Math.floor(gameTime/10))recordTimeline();
   for(const u of units){
     if(u.team==='player'&&u.hp>0&&u.hp<u.mh){
       const healR=techs.heal.done?10:5;
@@ -1241,6 +1356,7 @@ function update(dt){
   for(let i=fx.length-1;i>=0;i--){const p=fx[i];p.x+=p.vx*dt;p.y+=p.vy*dt;
     p.vx*=.82;p.vy*=.82;p.life-=dt*2.5;if(p.life<=0)fx.splice(i,1);}
   if(statusTimer>0){statusTimer-=dt;if(statusTimer<=0)statusEl.style.opacity=0;}
+  if(alertTimer>0)alertTimer-=dt;
   upPop();rdMenu();upIdle();upGrpLabels();camKeys(dt);
   if(mp.ready&&mp.role==='host'){
     snapAcc+=dt;if(snapAcc>=.12){snapAcc=0;sendSnap();}
@@ -1257,7 +1373,7 @@ function rdMenu(){
   const show=(id,cond)=>{const e=document.getElementById(id);e.style.display=cond?'':'none';return e;};
   const en=(id,cond)=>{const e=document.getElementById(id);e.disabled=!cond;};
   gm.style.display='flex';
-  const hideAll=()=>['btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3'].forEach(id=>show(id,0));
+  const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3'].forEach(id=>show(id,0));
   const ai=ageIdx(currentAge);
   const isGuest=mp.ready&&mp.role==='guest';
   const vs=sel.filter(u=>u.type==='villager'&&u.team===MYTEAM);
@@ -1327,7 +1443,18 @@ function rdMenu(){
   }else if(selectedBldg&&selectedBldg.complete){
     hideAll();
     const icons={house:'🏠',mill:'🌾',tower:'🏗️',wall:'🧱',barracks:'⚔️',blacksmith:'⚒️',castle_bldg:'🏰'};
-    show('bmenuLabel',1).textContent=(icons[selectedBldg.type]||'🏛️')+selectedBldg.name+(selectedBldg.type==='house'?` +${selectedBldg.pb}人口`:'');
+    const gcap=GARRISON_CAP[selectedBldg.type];const gcnt=garrisonCount(selectedBldg);
+    show('bmenuLabel',1).textContent=(icons[selectedBldg.type]||'🏛️')+selectedBldg.name+
+      (gcap?` 🏰${gcnt}/${gcap}`:'')+(selectedBldg.type==='house'?` +${selectedBldg.pb}人口`:'');
+    // 駐軍按鈕 (TC, tower, castle)
+    if(gcap&&selectedBldg.team===MYTEAM&&gcnt<gcap){
+      const btnG=document.getElementById('btnGarrison');
+      if(!btnG){const b=document.createElement('button');b.id='btnGarrison';b.textContent='🏰駐軍';b.onclick=()=>garrisonUnit(selectedBldg);b.style.cssText='background:rgba(80,120,200,.9);border-color:#6090d0;';document.getElementById('bmenu').appendChild(b);}
+      else btnG.style.display='';}
+    if(gcap&&gcnt>0&&selectedBldg.team===MYTEAM){
+      const btnU=document.getElementById('btnUngarrison');
+      if(!btnU){const b=document.createElement('button');b.id='btnUngarrison';b.textContent='📤放出';b.onclick=()=>ungarrisonUnit(selectedBldg);b.style.cssText='background:rgba(200,120,60,.9);border-color:#d09060;';document.getElementById('bmenu').appendChild(b);}
+      else btnU.style.display='';}
   }else{gm.style.display='none';}
 }
 function upIdle(){const idl=units.find(u=>u.team===MYTEAM&&u.type==='villager'&&u.state==='idle'&&!u.sel);
@@ -1905,6 +2032,15 @@ function drawOverlay(){
     octx.globalAlpha=Math.max(0,f.life);octx.fillStyle=f.c;
     octx.fillRect(p.x-f.sz/2,p.y-f.sz/2,f.sz,f.sz);}
   octx.globalAlpha=1;
+  // waypoint 連線
+  for(const u of units){if(!u.sel||!u.waypoints||!u.waypoints.length)continue;
+    const pts=[{x:u.x,y:u.y},...u.waypoints];
+    octx.strokeStyle='rgba(128,208,255,.7)';octx.lineWidth=1.2;octx.setLineDash([4,3]);octx.beginPath();
+    const p0=proj(pts[0].x,pts[0].y,1);if(!p0.vis)continue;octx.moveTo(p0.x,p0.y);
+    for(let i=1;i<pts.length;i++){const pi=proj(pts[i].x,pts[i].y,1);if(pi.vis)octx.lineTo(pi.x,pi.y);}
+    octx.stroke();octx.setLineDash([]);
+    // waypoint dot
+    for(const wp of u.waypoints){const p=proj(wp.x,wp.y,1);if(p.vis){octx.fillStyle='#80d0ff';octx.beginPath();octx.arc(p.x,p.y,3,0,7);octx.fill();}}}
   if(bxSel&&bxR){octx.strokeStyle='#ffd250';octx.lineWidth=1.5;
     octx.setLineDash([6,4]);
     octx.strokeRect(Math.min(bxR.x1,bxR.x2),Math.min(bxR.y1,bxR.y2),
@@ -2091,7 +2227,7 @@ function hostRecv(d){
     if(!evils.length)return;const c4=def.cost;
     if(eWood>=(c4.wood||0)&&eFood>=(c4.food||0)&&eStone>=(c4.stone||0)&&eGold>=(c4.gold||0)){
       const ax=evils.reduce((s,v)=>s+v.x,0)/evils.length,ay=evils.reduce((s,v)=>s+v.y,0)/evils.length;
-      const sp=findSpot(ax,ay,def.w,def.h);if(!sp)return;
+      const sp=findSpot(ax,ay,def.w,def.h,d.type);if(!sp)return;
       eWood-=c4.wood||0;eFood-=c4.food||0;eStone-=c4.stone||0;eGold-=c4.gold||0;
       const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type:d.type,hp:1,maxHp:def.hp||200,name:def.name,
         p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'enemy',
