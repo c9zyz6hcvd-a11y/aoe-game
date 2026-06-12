@@ -1361,7 +1361,7 @@ function pickClip(clips,res){for(const re of res){const c=clips.find(c=>re.test(
   // three.js 寫實馬（morph 動畫，沿 Z 軸，要置中+落地）
   const hg=await loadGLB('assets/Horse.glb');
   const hb=new THREE.Box3().setFromObject(hg.scene);
-  const hs=2.7/(hb.max.y-hb.min.y);
+  const hs=3.6/(hb.max.y-hb.min.y);
   const hc=hb.getCenter(new THREE.Vector3());
   horseLib={scene:hg.scene,clips:hg.animations,scale:hs,
     off:{x:-hc.x*hs,y:-hb.min.y*hs,z:-hc.z*hs}};
@@ -1424,16 +1424,16 @@ function makeMountedGLB(u){
   u.mixH=new THREE.AnimationMixer(h);
   if(horseLib.clips[0]){u.actH=u.mixH.clipAction(horseLib.clips[0]);u.actH.play();u.mixH.timeScale=0;}
   // 鞍 + 氈
-  const bk=box(.76,.08,.95,isKnight?0xc8a030:(en?0x8a2828:0x28508a));bk.position.set(0,1.37,-.32);body.add(bk);
-  const sd=box(.56,.12,.62,0x4a3a26);sd.position.set(0,1.44,-.32);body.add(sd);
-  // 騎士（KayKit，骨骼擺騎姿）
+  const bk=box(1.0,.1,1.26,isKnight?0xc8a030:(en?0x8a2828:0x28508a));bk.position.set(0,1.82,-.43);body.add(bk);
+  const sd=box(.72,.15,.82,0x4a3a26);sd.position.set(0,1.92,-.43);body.add(sd);
+  // 騎士（KayKit，骨骼擺騎姿，同步兵一樣大）
   const lib=charLib.swordsman;
   const r=SkeletonUtils.clone(lib.scene);
-  r.scale.setScalar(lib.scale*.88);
+  r.scale.setScalar(lib.scale);
   r.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
     if(en||isKnight){m.material=m.material.clone();
       if(m.material.color)m.material.color.lerp(new THREE.Color(en?0xc03030:0xc8a030),en?.3:.22);}}});
-  r.position.set(0,1.16,-.32);
+  r.position.set(0,1.6,-.43);
   body.add(r);
   u.mixR=new THREE.AnimationMixer(r);
   const cl=lib.clips;
@@ -1446,7 +1446,7 @@ function makeMountedGLB(u){
     ftl:r.getObjectByName('footl'),ftr:r.getObjectByName('footr')};
   // 武器插喺手 slot
   const slot=r.getObjectByName('handslotr');
-  if(slot){const k=1/(lib.scale*.95);
+  if(slot){const k=1/lib.scale;
     if(isKnight){
       const blade=new THREE.Mesh(new THREE.BoxGeometry(.07*k,.85*k,.024*k),matM(0xd8dde2));
       blade.position.y=.5*k;blade.castShadow=true;slot.add(blade);
@@ -1459,7 +1459,7 @@ function makeMountedGLB(u){
       tip.position.y=1.15*k;slot.add(tip);
     }}
   g.userData.mounted=1;
-  g.userData.ring=ringSel(1.9);g.add(g.userData.ring);
+  g.userData.ring=ringSel(2.3);g.add(g.userData.ring);
   return g;
 }
 function makeUnitMesh(u){
