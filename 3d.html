@@ -942,8 +942,8 @@ function blockedSet(){
   for(const t of trees){if(t.res<=0)continue;const gx=~~(t.x/WORLD.T),gy=~~(t.y/WORLD.T);
     s.add(gx+','+gy);s.add((gx+1)+','+gy);s.add(gx+','+(gy+1));s.add((gx+1)+','+(gy+1));}
   for(const b of[tc,etc,...buildings]){if(!b.complete&&b!==tc&&b!==etc)continue;
-    const gx=~~(b.x/WORLD.T),gy=~~(b.y/WORLD.T),gw=Math.ceil((b.w||100)/WORLD.T),gh=Math.ceil((b.h||100)/WORLD.T);
-    for(let dx=0;dx<gw;dx++)for(let dy=0;dy<gh;dy++)s.add((gx+dx)+','+(gy+dy));}
+    const gx1=~~(b.x/WORLD.T),gy1=~~(b.y/WORLD.T),gx2=~~((b.x+(b.w||100)-1)/WORLD.T),gy2=~~((b.y+(b.h||100)-1)/WORLD.T);
+    for(let gx=gx1;gx<=gx2;gx++)for(let gy=gy1;gy<=gy2;gy++)s.add(gx+','+gy);}
   // 城牆連線：相鄰牆之間 block 全部空隙 grid cells（Bresenham 線填充）
   const walls=buildings.filter(b=>b.type==='wall'&&b.complete);
   for(let i=0;i<walls.length;i++){
@@ -1107,7 +1107,7 @@ function issueCmd(wx,wy,list){
   sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=null;u.state='moving';u.waypoints=[];});
   if(curFormation==='line'){sel.forEach((u,i)=>{u.tx=wx+(i-(sel.length-1)/2)*30;u.ty=wy;u.path=null;});}else if(curFormation==='scatter'){sel.forEach((u,i)=>{u.tx=wx+(Math.random()-.5)*120;u.ty=wy+(Math.random()-.5)*120;u.path=null;});}else{const cols=Math.ceil(Math.sqrt(sel.length));sel.forEach((u,i)=>{const r=Math.floor(i/cols),c=i%cols;u.tx=wx+(c-(cols-1)/2)*30;u.ty=wy+r*30;u.path=null;});}
   // A-Move: 軍事單位移動中自動接敵
-  sel.filter(u=>u.type!=='villager').forEach(u=>{
+  sel.forEach(u=>{
     u.path=aStar(u.x,u.y,wx,wy);u.pi=0;
     u.aMove=true;u.aMoveX=wx;u.aMoveY=wy;});
   playClick();spawnFx(wx,wy,'#ffd250',6);}
@@ -1192,7 +1192,18 @@ function mvUnit(v,dt){
   if(d>2){v.mv=1;
     const spd=v.type==='horseman'||v.type==='knight'?10:v.type==='catapult'?4:8;
     const prevWt=v.wt; v.wt+=dt*spd;
-    const s=Math.min(d,v.sp*dt);v.x+=dx/d*s;v.y+=dy/d*s;
+    const s=Math.min(d,v.sp*dt);
+    // 城牆碰撞：冇 path 時檢查 next cell，blocked 就 call A* 避開
+    if(!v.path){
+      const nx=v.x+dx/d*s,ny=v.y+dy/d*s;
+      const ccx=~~(v.x/WORLD.T),ccy=~~(v.y/WORLD.T);
+      const ncx=~~(nx/WORLD.T),ncy=~~(ny/WORLD.T);
+      if((ncx!==ccx||ncy!==ccy)&&blockedSet().has(ncx+','+ncy)){
+        v.path=aStar(v.x,v.y,v.tx,v.ty);v.pi=0;
+        if(v.path&&v.path.length>0){v.tx=v.path[0].x;v.ty=v.path[0].y;}
+      }
+    }
+    v.x+=dx/d*s;v.y+=dy/d*s;
     v.dir=Math.atan2(dx,dy);
     if(Math.sin(prevWt)>=0&&Math.sin(v.wt)<0){
       const heavy=v.type==='horseman'||v.type==='knight'||v.type==='catapult';
@@ -1266,7 +1277,7 @@ function updateCombat(v,dt){
     if(near){v.tEn=near;v.state='chase';v.aMove=false;v.tx=near.x;v.ty=near.y;v.path=null;}
   }
   // A-Move: 打完繼續行去目的地
-  if(v.aMove&&v.state==='idle'&&!v.tEn){
+  if(v.aMove&&v.state==='idle'&&!v.tEn&&v.type!=='villager'){
     v.tx=v.aMoveX;v.ty=v.aMoveY;v.state='moving';v.tEn=null;v.tRes=null;}
   // Patrol: 到站就掉頭
   if(v.patrol&&v.state==='moving'&&Math.hypot(v.x-v.patrolX,v.y-v.patrolY)<30){
