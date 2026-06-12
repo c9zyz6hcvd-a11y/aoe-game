@@ -124,12 +124,6 @@
     <button onclick="closeLobby()" style="font-size:15px;padding:10px 26px;background:#444;color:#eee;
       border:none;border-radius:10px;cursor:pointer;">返回</button>
   </div>
-  <div style="margin-top:12px;display:none;gap:8px;" id="lbJoinRow">
-    <input id="lbJoinInput" placeholder="貼上 Room ID…" style="font-size:13px;padding:8px 12px;background:#222;color:#fff;
-      border:1px solid #555;border-radius:8px;width:200px;text-align:center;">
-    <button onclick="mpJoin(document.getElementById('lbJoinInput').value.trim())" style="font-size:13px;padding:8px 18px;
-      background:#409050;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">🚪 加入</button>
-  </div>
 </div>
 <div id="status"></div>
 <div id="bmenu">
@@ -613,7 +607,6 @@ function endGame(win){
 }
 function tcCenter(t=tc){return{x:t.x+t.w/2,y:t.y+t.h/2};}
 // ---- 地圖資源 ----
-const REGROW_TIME={wood:90,food:75,stone:120,gold:150}; // 資源重生時間(秒)
 const TREE_R=22;const trees=[];
 (function(){const zs=[[tc.x+180,tc.y-180,480,380],[tc.x+360,tc.y+130,380,320],[100,100,580,580],[WORLD.w-700,100,580,680],[100,WORLD.h-700,680,580],[WORLD.w-600,WORLD.h-600,480,480],[WORLD.w/2-80,80,380,380]];
   for(const[bx,by,bw,bh]of zs){for(let i=0;i<4+Math.random()*4;i++){let ok=0,x,y,t=0;
@@ -621,7 +614,7 @@ const TREE_R=22;const trees=[];
       if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
       if(Math.hypot(x-(tc.x+50),y-(tc.y+50))<150||Math.hypot(x-(etc.x+50),y-(etc.y+50))<150)continue;
       ok=trees.every(t=>Math.hypot(t.x-x,t.y-y)>TREE_R*2.2);}
-    if(ok)trees.push({x,y,r:TREE_R,res:80,mr:80,type:'wood',st:0,regenTimer:0});}}})();
+    if(ok)trees.push({x,y,r:TREE_R,res:80,mr:80,type:'wood',st:0});}}})();
 const BUSH_R=18;const bushes=[];
 (function(){const zs=[[tc.x+100,tc.y+80,300,250],[tc.x-250,tc.y-150,280,280],[WORLD.w/2+200,WORLD.h/2+200,400,350],[200,WORLD.h-500,400,380],[WORLD.w-500,WORLD.h/2-100,380,320]];
   for(const[bx,by,bw,bh]of zs){for(let i=0;i<3+Math.random()*3;i++){let ok=0,x,y,t=0;
@@ -629,21 +622,21 @@ const BUSH_R=18;const bushes=[];
       if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
       if(Math.hypot(x-(tc.x+50),y-(tc.y+50))<120||Math.hypot(x-(etc.x+50),y-(etc.y+50))<120)continue;
       ok=[...trees,...bushes].every(t=>Math.hypot(t.x-x,t.y-y)>BUSH_R*2.5);}
-    if(ok)bushes.push({x,y,r:BUSH_R,res:60,mr:60,type:'food',st:0,regenTimer:0});}}})();
+    if(ok)bushes.push({x,y,r:BUSH_R,res:60,mr:60,type:'food',st:0});}}})();
 const STONE_R=18;const stones=[];
 (function(){const zs=[[300,300,200,200],[WORLD.w-500,300,200,200],[tc.x-200,tc.y+200,200,200],[WORLD.w/2+300,WORLD.h/2-200,200,200]];
   for(const[bx,by,bw,bh]of zs){for(let i=0;i<2+Math.random()*2;i++){let ok=0,x,y,t=0;
     while(!ok&&t++<30){x=bx+Math.random()*bw;y=by+Math.random()*bh;
       if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
       ok=[...trees,...bushes,...stones].every(t=>Math.hypot(t.x-x,t.y-y)>STONE_R*2.5);}
-    if(ok)stones.push({x,y,r:STONE_R,res:80,mr:80,type:'stone',st:0,regenTimer:0});}}})();
+    if(ok)stones.push({x,y,r:STONE_R,res:80,mr:80,type:'stone',st:0});}}})();
 const GOLD_R=18;const goldMines=[];
 (function(){const zs=[[tc.x+250,tc.y-250,180,180],[WORLD.w/2-100,WORLD.h/2+250,180,180],[WORLD.w-400,WORLD.h-400,180,180],[200,WORLD.h/2-100,180,180]];
   for(const[bx,by,bw,bh]of zs){for(let i=0;i<2+Math.floor(Math.random()*2);i++){let ok=0,x,y,t=0;
     while(!ok&&t++<30){x=bx+Math.random()*bw;y=by+Math.random()*bh;
       if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
       ok=[...trees,...bushes,...stones,...goldMines].every(o=>Math.hypot(o.x-x,o.y-y)>GOLD_R*2.5);}
-    if(ok)goldMines.push({x,y,r:GOLD_R,res:100,mr:100,type:'gold',st:0,regenTimer:0});}}})();
+    if(ok)goldMines.push({x,y,r:GOLD_R,res:100,mr:100,type:'gold',st:0});}}})();
 // ---- 單位 ----
 const HATS=[0x8b5a2b,0x5a3a8b,0x2b6a5a];let uid=0;
 function makeUnit(x,y,type,team='player'){
@@ -949,9 +942,7 @@ function issueCmd(wx,wy,list){
     playClick();spawnFx(wx,wy,'#80d0ff',5);showStatus(`➕ ${sel.length}人加途徑點`);return;}
   // 多人 guest：指令送俾主機執行
   if(!list&&mp.ready&&mp.role==='guest'){
-    const cmd={c:'cmd',ids:sel.map(u=>u.i),x:Math.round(wx),y:Math.round(wy)};
-    console.log('[MP guest] send cmd:',cmd.ids.length+' units → ('+cmd.x+','+cmd.y+')', 'via',mp.via);
-    mp.send(cmd);
+    mp.send({c:'cmd',ids:sel.map(u=>u.i),x:Math.round(wx),y:Math.round(wy)});
     playClick();spawnFx(wx,wy,'#ffd250',6);return;}
   const team=sel[0].team;
   const he=findEnemyAt(wx,wy,team);
@@ -1109,7 +1100,6 @@ function updateVil(v,dt){
     else{v.gt+=dt;v.cs=(v.gt/v.gi)%1;
       v.dir=Math.atan2(t.x-v.x,t.y-v.y);
       if(v.gt>=v.gi){v.gt=0;const a=Math.min(2,t.res);t.res-=a;v.ca+=a;spawnChips(t,v);t.st=.15;
-        if(t.res<=0&&t.regenTimer!==undefined&&t.regenTimer<=0)t.regenTimer=REGROW_TIME[t.type]||90;
         if(t.type==='wood')playChop();else if(t.type==='food')playPick();else play(400,200,.06,.15,'sawtooth');
         if(v.ca>=v.cm){const c=tcCenter(v.team==='enemy'?etc:tc);v.tx=c.x;v.ty=c.y;v.state='returning';v.cs=0;}}
       if(t.st>0)t.st-=dt;}}
@@ -1367,9 +1357,6 @@ function update(dt){
     p.vx*=.82;p.vy*=.82;p.life-=dt*2.5;if(p.life<=0)fx.splice(i,1);}
   if(statusTimer>0){statusTimer-=dt;if(statusTimer<=0)statusEl.style.opacity=0;}
   if(alertTimer>0)alertTimer-=dt;
-  // 資源重生：regenTimer 倒數完就復原 res
-  const processRegen=(arr)=>{for(const r of arr)if(r.res<=0&&r.regenTimer>0){r.regenTimer-=dt;if(r.regenTimer<=0){r.res=r.mr;r.regenTimer=0;spawnFx(r.x,r.y,'#80ff80',10);}}};
-  processRegen(trees);processRegen(bushes);processRegen(stones);processRegen(goldMines);
   upPop();rdMenu();upIdle();upGrpLabels();camKeys(dt);
   if(mp.ready&&mp.role==='host'){
     snapAcc+=dt;if(snapAcc>=.12){snapAcc=0;sendSnap();}
@@ -2096,8 +2083,7 @@ function loadPeerJS(){return new Promise((res,rej)=>{
   const s=document.createElement('script');
   s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
   s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
-window.openLobby=()=>{document.getElementById('lobby').style.display='flex';
-  document.getElementById('lbJoinRow').style.display=mp.ready?'none':'flex';};
+window.openLobby=()=>{document.getElementById('lobby').style.display='flex';};
 window.closeLobby=()=>{document.getElementById('lobby').style.display='none';};
 function mpGo(role){ // 接通後共同初始化
   mp.ready=true;mp.role=role;
@@ -2196,10 +2182,10 @@ function mpStart(){ // 兩邊：清 AI 嘢、隱藏波次條
 }
 function sendInit(){
   mp.send({c:'init',
-    trees:trees.map(t=>[Math.round(t.x),Math.round(t.y),t.res,t.regenTimer||0]),
-    bushes:bushes.map(b=>[Math.round(b.x),Math.round(b.y),b.res,b.regenTimer||0]),
-    stones:stones.map(s=>[Math.round(s.x),Math.round(s.y),s.res,s.regenTimer||0]),
-    golds:goldMines.map(g=>[Math.round(g.x),Math.round(g.y),g.res,g.regenTimer||0])});
+    trees:trees.map(t=>[Math.round(t.x),Math.round(t.y),t.res]),
+    bushes:bushes.map(b=>[Math.round(b.x),Math.round(b.y),b.res]),
+    stones:stones.map(s=>[Math.round(s.x),Math.round(s.y),s.res]),
+    golds:goldMines.map(g=>[Math.round(g.x),Math.round(g.y),g.res])});
 }
 function sendSnap(){
   mp.send({c:'snap',
@@ -2211,7 +2197,7 @@ function sendSnap(){
     tch:Math.round(tc.hp),etch:Math.round(etc.hp),
     res:[eWood,eFood,eStone,eGold],t:Math.round(gameTime),
     over:isGameOver?(tc.hp<=0?2:1):0,
-    rs:[trees.map(t=>[t.res,t.regenTimer||0]),bushes.map(b=>[b.res,b.regenTimer||0]),stones.map(s=>[s.res,s.regenTimer||0]),goldMines.map(g=>[g.res,g.regenTimer||0])],
+    rs:[trees.map(t=>t.res),bushes.map(b=>b.res),stones.map(s=>s.res),goldMines.map(g=>g.res)],
     et:Object.keys(eTechs).map(k=>eTechs[k].done?1:0),
     erq:eResearchQueue?Object.keys(eTechs).indexOf(eResearchQueue):-1,
     ea:ageIdx(eCurrentAge),eaUp:eAgeUpgrading?1:0});
@@ -2221,9 +2207,7 @@ function hostRecv(d){
   if(d.c==='cmd'){
     const ids=new Set(d.ids);
     const list=units.filter(u=>u.team==='enemy'&&ids.has(u.i));
-    console.log('[MP host] cmd: found',list.length,'/',ids.size,'enemy units, target=(',d.x,',',d.y,')');
     if(list.length)issueCmd(d.x,d.y,list);
-    else console.log('[MP host] cmd: NO enemy units matched! host enemy units:',units.filter(u=>u.team==='enemy').map(u=>u.i),'guest ids:',d.ids);
   }else if(d.c==='vil'){
     if(eFood>=50){eFood-=50;
       const c2=tcCenter(etc);
@@ -2271,7 +2255,7 @@ function guestRecv(d){
     const rebuild=(arr,data,maker,rr,ty)=>{
       for(const o of arr)if(o.mesh)scene.remove(o.mesh);
       arr.length=0;
-      for(const[x,y,res,rt]of data){const o={x,y,r:rr,res,mr:res||1,type:ty,st:0,regenTimer:rt||0};
+      for(const[x,y,res]of data){const o={x,y,r:rr,res,mr:res||1,type:ty,st:0};
         o.mesh=maker();place(o.mesh,x,y);scene.add(o.mesh);arr.push(o);}};
     rebuild(trees,d.trees,makeTree,TREE_R,'wood');
     rebuild(bushes,d.bushes,makeBush,BUSH_R,'food');
@@ -2314,10 +2298,10 @@ function applySnap(){
   }
   for(let i=buildings.length-1;i>=0;i--){const b=buildings[i];
     if(!seenB.has(b.id)){if(b.mesh)scene.remove(b.mesh);guestBldgs.delete(b.id);buildings.splice(i,1);}}
-  d.rs[0].forEach((r,i)=>{if(trees[i]){trees[i].res=r[0];trees[i].regenTimer=r[1]||0;}});
-  d.rs[1].forEach((r,i)=>{if(bushes[i]){bushes[i].res=r[0];bushes[i].regenTimer=r[1]||0;}});
-  d.rs[2].forEach((r,i)=>{if(stones[i]){stones[i].res=r[0];stones[i].regenTimer=r[1]||0;}});
-  d.rs[3].forEach((r,i)=>{if(goldMines[i]){goldMines[i].res=r[0];goldMines[i].regenTimer=r[1]||0;}});
+  d.rs[0].forEach((r,i)=>{if(trees[i])trees[i].res=r;});
+  d.rs[1].forEach((r,i)=>{if(bushes[i])bushes[i].res=r;});
+  d.rs[2].forEach((r,i)=>{if(stones[i])stones[i].res=r;});
+  d.rs[3].forEach((r,i)=>{if(goldMines[i])goldMines[i].res=r;});
   // sync enemy tech/age state
   if(d.et){const ek=Object.keys(eTechs);d.et.forEach((v,i)=>{if(ek[i])eTechs[ek[i]].done=!!v;});}
   if(d.erq!==undefined){eResearchQueue=d.erq>=0?Object.keys(eTechs)[d.erq]:null;}
