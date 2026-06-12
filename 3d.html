@@ -1149,7 +1149,13 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&placingType){placingType=nul
   if(e.key==='a'||e.key==='A'){selectedBldg=null;units.forEach(u=>{if(u.team===MYTEAM&&u.type==='villager')u.sel=1;});
     showStatus(`全選 ${units.filter(u=>u.team===MYTEAM&&u.type==='villager').length}村民`);}
   if(e.key==='b'||e.key==='B'){const v=units.filter(u=>u.team===MYTEAM&&u.type==='villager'&&u.sel);
-    if(v.length&&wood>=30)startBuild('house');else if(v.length)showStatus('木頭不足');else showStatus('先選村民');}
+    if(v.length&&wood>=30)startBuild('house');else if(v.length)showStatus('木頭不足');else showStatus('先選村民 (按A全選)');}
+  if(e.key==='v'||e.key==='V'){const v=units.filter(u=>u.team===MYTEAM&&u.type==='villager'&&u.sel);
+    if(v.length&&canAfford(BUILD_DEFS.wall.cost))startBuild('wall');else if(v.length)showStatus('資源不足 (需🪵10)');else showStatus('先選村民 (按A全選)');}
+  if(e.key==='t'||e.key==='T'){const v=units.filter(u=>u.team===MYTEAM&&u.type==='villager'&&u.sel);
+    if(v.length&&canAfford(BUILD_DEFS.tower.cost)&&ageIdx(currentAge)>=1)startBuild('tower');else if(v.length)showStatus('資源不足或需封建時代');else showStatus('先選村民 (按A全選)');}
+  if(e.key==='r'||e.key==='R'){const v=units.filter(u=>u.team===MYTEAM&&u.type==='villager'&&u.sel);
+    if(v.length&&canAfford(BUILD_DEFS.barracks.cost))startBuild('barracks');else if(v.length)showStatus('資源不足');else showStatus('先選村民 (按A全選)');}
   if(e.key==='Escape'){units.forEach(u=>u.sel=0);selectedBldg=null;showStatus('取消');}
   if(e.key==='p'||e.key==='P'){const sm=selected().filter(u=>u.type!=='villager'&&u.team===MYTEAM);
     if(sm.length){sm.forEach(u=>{u.patrol=true;u.patrolX=u.x;u.patrolY=u.y;u.patrolDestX=u.x+200;u.patrolDestY=u.y;
