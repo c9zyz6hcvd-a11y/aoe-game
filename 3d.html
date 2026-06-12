@@ -647,7 +647,10 @@ const GOLD_R=18;const goldMines=[];
 function regrowResources(dt){
   for(const arr of[trees,bushes,stones,goldMines]){
     for(const r of arr){
-      if(r.res<=0&&r.rt>0){r.rt-=dt;if(r.rt<=0){r.res=r.mr;r.rt=0;spawnFx(r.x,r.y,'#80ff80',10);}}
+      if(r.res>0)continue;
+      if(!r.rt){r.rt=REGROW[r.type]||90;continue;} // 採完 → 自動開計時（唔使靠採集路徑 arm）
+      r.rt-=dt;
+      if(r.rt<=0){r.res=r.mr;r.rt=0;spawnFx(r.x,r.y,'#80ff80',10);}
     }
   }
 }
@@ -1116,7 +1119,6 @@ function updateVil(v,dt){
     else{v.gt+=dt;v.cs=(v.gt/v.gi)%1;
       v.dir=Math.atan2(t.x-v.x,t.y-v.y);
       if(v.gt>=v.gi){v.gt=0;const a=Math.min(2,t.res);t.res-=a;v.ca+=a;spawnChips(t,v);t.st=.15;
-        if(t.res<=0&&t.rt!==undefined&&t.rt<=0)t.rt=REGROW[t.type]||90;
         if(t.type==='wood')playChop();else if(t.type==='food')playPick();else play(400,200,.06,.15,'sawtooth');
         if(v.ca>=v.cm){const c=tcCenter(v.team==='enemy'?etc:tc);v.tx=c.x;v.ty=c.y;v.state='returning';v.cs=0;}}
       if(t.st>0)t.st-=dt;}}
@@ -1388,8 +1390,8 @@ function update(dt){
 // ---- UI ----
 function rdMenu(){
   const sel=selected();const gm=document.getElementById('bmenu');
-  const show=(id,cond)=>{const e=document.getElementById(id);e.style.display=cond?'':'none';return e;};
-  const en=(id,cond)=>{const e=document.getElementById(id);e.disabled=!cond;};
+  const show=(id,cond)=>{const e=document.getElementById(id);if(!e)return e;e.style.display=cond?'':'none';return e;};
+  const en=(id,cond)=>{const e=document.getElementById(id);if(e)e.disabled=!cond;};
   gm.style.display='flex';
   const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3'].forEach(id=>show(id,0));
   const ai=ageIdx(currentAge);
