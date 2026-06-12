@@ -510,7 +510,7 @@ function updateAge(dt){
       currentAge=AGES[currentAge].next;
       const a=AGES[currentAge];
       ageBadgeEl.textContent=a.icon+a.name;
-      showStatus('🎉 進入'+a.name+'！');playDrop();
+      showStatus('🎉 進入'+a.name+'！');playAgeUp();playDrop();
       spawnFx(tc.x+tc.w/2,tc.y+tc.h/2,'#ffd250',24);}}
   // 敵方時代升級（主機側處理，獨立於玩家）
   if(eAgeUpgrading){
@@ -524,7 +524,7 @@ function trainVillager(){
   const v=makeUnit(c.x-12+Math.random()*24,c.y+tc.h/2+5,'villager');
   v.tx=c.x;v.ty=c.y+tc.h+60;v.state='moving';units.push(v);upPop();
   stats.built++;
-  playDrop();spawnFx(c.x,c.y+tc.h,'#80ff80',10);showStatus('👤 新村民');}
+  playTrainDone();playDrop();spawnFx(c.x,c.y+tc.h,'#80ff80',10);showStatus('👤 新村民');}
 function trainUnit(type){
   const def=UNIT_DEFS[type];if(!def)return;
   if(mp.ready&&mp.role==='guest'){
@@ -538,7 +538,7 @@ function trainUnit(type){
   const u=makeUnit(b.x+b.w/2-10+Math.random()*20,b.y+b.h+16,type);
   u.tx=b.x+b.w/2+(Math.random()-.5)*40;u.ty=b.y+b.h+40+Math.random()*20;
   u.state='moving';units.push(u);upPop();stats.built++;
-  playClick();spawnFx(u.x,u.y,'#80c0ff',10);showStatus('⚔️ '+def.name);}
+  playTrainDone();playClick();spawnFx(u.x,u.y,'#80c0ff',10);showStatus('⚔️ '+def.name);}
 function doResearch(key){
   if(mp.ready&&mp.role==='guest'){
     const t=eTechs[key];if(!t||t.done)return;
@@ -605,7 +605,7 @@ function endGame(win){
   const timeStr=`${mm}分${ss<10?'0':''}${ss}秒`;
   const rec=saveRecord(win,stats.kills,stats.losses);
   const sp=document.getElementById('statsPanel');
-  document.getElementById('spIcon').textContent=win?'🏆':'💀';
+  if(win)playVictory();else playDefeat();document.getElementById('spIcon').textContent=win?'🏆':'💀';
   document.getElementById('spTitle').textContent=win?'你贏了！':'你輸了！';
   document.getElementById('spSub').textContent=win?`摧毀敵方主堡，歷時 ${timeStr}`:`主堡淪陷，歷時 ${timeStr}`;
   const rows=[
@@ -724,6 +724,39 @@ function playStep(heavy=false){
   const g=AC.createGain();g.gain.value=.35;
   src.connect(f);f.connect(g);g.connect(AC.destination);src.start();
 }
+function playTrainDone(){ // 訓練完成 — C-E-G 和弦叮
+  [523,659,784].forEach(f=>{
+    const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;
+    g.gain.setValueAtTime(.15,AC.currentTime);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+.25);
+    o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+.25);});}
+function playBuildDone(){ // 建築完成 — 號角 sweep
+  const l=AC.sampleRate*.35,b=AC.createBuffer(1,l,AC.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<l;i++){const t=i/l;d[i]=Math.sin(t*Math.PI*2*(3+t*12))*(1-t)*.3+(Math.random()*2-1)*.15*(1-t);}
+  const s=AC.createBufferSource();s.buffer=b;const f=AC.createBiquadFilter();f.type='lowpass';
+  f.frequency.setValueAtTime(300,AC.currentTime);f.frequency.exponentialRampToValueAtTime(800,AC.currentTime+.35);
+  const g=AC.createGain();g.gain.value=.4;s.connect(f);f.connect(g);g.connect(AC.destination);s.start();}
+function playAgeUp(){ // 時代升級 — 鐘聲 ascending
+  [523,659,784,1047].forEach((f,i)=>{
+    const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;
+    const t=AC.currentTime+i*.12;g.gain.setValueAtTime(.18,t);g.gain.exponentialRampToValueAtTime(.001,t+.45);
+    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+.45);});}
+function playDeathCry(){ // 陣亡 — descending scream
+  play(400,60,.35,.18,'sawtooth');
+  const l=AC.sampleRate*.2,b=AC.createBuffer(1,l,AC.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<l;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/l,5)*.25;
+  const s=AC.createBufferSource();s.buffer=b;const f2=AC.createBiquadFilter();f2.type='bandpass';
+  f2.frequency.setValueAtTime(600,AC.currentTime);f2.frequency.exponentialRampToValueAtTime(150,AC.currentTime+.2);
+  const g2=AC.createGain();g2.gain.value=.3;s.connect(f2);f2.connect(g2);g2.connect(AC.destination);s.start();}
+function playVictory(){ // 勝利 — major fanfare C-E-G-C
+  [523,659,784,1047].forEach((f,i)=>{
+    const o=AC.createOscillator(),g=AC.createGain();o.type='triangle';o.frequency.value=f;
+    const t=AC.currentTime+i*.15;g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.55);
+    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+.55);});}
+function playDefeat(){ // 失敗 — descending minor
+  [523,440,349,262].forEach((f,i)=>{
+    const o=AC.createOscillator(),g=AC.createGain();o.type='triangle';o.frequency.value=f;
+    const t=AC.currentTime+i*.18;g.gain.setValueAtTime(.18,t);g.gain.exponentialRampToValueAtTime(.001,t+.6);
+    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+.6);});}
 // ---- 特效（overlay 投影） ----
 const fx=[];
 function spawnFx(x,y,c,n=8){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=30+Math.random()*60;
@@ -1013,7 +1046,7 @@ addEventListener('mouseup',e=>{if(e.button!==0||!mouseDown)return;
   if(bxSel&&bxR){const mnX=Math.min(bxR.x1,bxR.x2),mxX=Math.max(bxR.x1,bxR.x2),mnY=Math.min(bxR.y1,bxR.y2),mxY=Math.max(bxR.y1,bxR.y2);
     const ht=units.filter(u=>{if(u.team!==MYTEAM)return 0;const p=proj(u.x,u.y,1);
       return p.vis&&p.x>=mnX&&p.x<=mxX&&p.y>=mnY&&p.y<=mxY;});
-    if(ht.length){units.forEach(u=>u.sel=0);selectedBldg=null;ht.forEach(u=>u.sel=1);
+    if(ht.length){units.forEach(u=>u.sel=0);selectedBldg=null;playClick();ht.forEach(u=>u.sel=1);
       showStatus(`已選 ${ht.length}人（${ht.filter(u=>u.type==='villager').length}村民）`);}}
   else if(!dragM){const hu=units.find(u=>u.team===MYTEAM&&Math.hypot(u.x-w.x,u.y-w.y)<(u.sz||20));
     const any=selected().length>0;
@@ -1120,7 +1153,7 @@ function updateVil(v,dt){
     if(!b.complete){b.p+=dt;v.cs=Math.sin(performance.now()/200)*.5+.5;
       if(b.p>=b.bt){b.complete=1;b.hp=b.maxHp;
         if(b.type==='house'||b.pb){if(b.team==='player')popCap+=b.pb;}
-        playDrop();spawnFx(b.x+b.w/2,b.y+b.h/2,'#ffd250',16);showStatus(b.name+'完成！');
+        playBuildDone();playDrop();spawnFx(b.x+b.w/2,b.y+b.h/2,'#ffd250',16);showStatus(b.name+'完成！');
         v.state='idle';v.tBldg=null;}}
     else{v.state='idle';v.tBldg=null;}
   }
@@ -1364,7 +1397,7 @@ function spawnWave(){
 }
 function update(dt){
   if(isGameOver)return;
-  for(let i=units.length-1;i>=0;i--){if(units[i].hp<=0){
+  for(let i=units.length-1;i>=0;i--){if(units[i].hp<=0){playDeathCry();
     if(units[i].mesh)scene.remove(units[i].mesh);
     units.splice(i,1);upPop();}}
   for(const v of units){if(v.state==='building'&&v.tBldg&&v.tBldg.complete){v.state='idle';v.tBldg=null;}}
@@ -1375,7 +1408,7 @@ function update(dt){
     if(u.team==='player'&&u.hp>0&&u.hp<u.mh){
       const healR=techs.heal.done?10:5;
       if(Math.hypot(u.x-(tc.x+50),u.y-(tc.y+50))<120)u.hp=Math.min(u.mh,u.hp+healR*dt);}}
-  if(researchQueue){const t=techs[researchQueue];t.rt+=dt;if(t.rt>=t.rtime){const k=researchQueue;t.done=true;researchQueue=null;applyTech(k,'player');showStatus('✅ '+t.name+'完成！');playDrop();}}
+  if(researchQueue){const t=techs[researchQueue];t.rt+=dt;if(t.rt>=t.rtime){const k=researchQueue;t.done=true;researchQueue=null;applyTech(k,'player');showStatus('✅ '+t.name+'完成！');playTrainDone();playDrop();}}
   if(eResearchQueue){const t=eTechs[eResearchQueue];t.rt+=dt;if(t.rt>=t.rtime){const k=eResearchQueue;t.done=true;eResearchQueue=null;applyTech(k,'enemy');}}
   if(!mp.ready){
     waveTimer-=dt;
