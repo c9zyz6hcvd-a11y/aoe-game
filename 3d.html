@@ -480,7 +480,7 @@ function startBuild(type){
   if(!vls.length){showStatus('選取村民');return;}
   if(!canAfford(def.cost)){showStatus('資源不足');return;}
   // 城牆：進入放置模式（click地圖揀位）
-  if(type==='wall'){placingType='wall';showStatus('🧱 點擊地圖放置城牆 (右鍵/Esc 取消)');playClick();return;}
+  if(type==='wall'){placingType='wall';showStatus('🧱 點擊地圖放置城牆 (左鍵放/Esc取消)');playClick();return;}
   const ax=vls.reduce((s,v)=>s+v.x,0)/vls.length,ay=vls.reduce((s,v)=>s+v.y,0)/vls.length;
   const sp=findSpot(ax,ay,def.w,def.h,type);if(!sp){showStatus('找不到空地');return;}
   spend(def.cost);
@@ -1110,6 +1110,7 @@ addEventListener('mousemove',e=>{if(!mouseDown)return;
   if(d>6){dragM=1;bxSel=1;bxR={x1:mouseDown.sx,y1:mouseDown.sy,x2:e.clientX,y2:e.clientY};}});
 addEventListener('mouseup',e=>{if(e.button!==0||!mouseDown)return;
   if(e.clientY>innerHeight-76){mouseDown=null;bxSel=0;bxR=null;dragM=0;return;}
+  if(placingType){mouseDown=null;bxSel=0;bxR=null;dragM=0;placeBuilding(sw(e.clientX,e.clientY));return;}
   const w=sw(e.clientX,e.clientY);
   const myTC=MYTEAM==='player'?tc:etc;
   if(bxSel&&bxR){const mnX=Math.min(bxR.x1,bxR.x2),mxX=Math.max(bxR.x1,bxR.x2),mnY=Math.min(bxR.y1,bxR.y2),mxY=Math.max(bxR.y1,bxR.y2);
