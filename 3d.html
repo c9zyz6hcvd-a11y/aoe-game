@@ -594,6 +594,67 @@ function updateSmokes(dt){
     o.s.material.opacity=Math.max(0,Math.min(.7,o.life*.5));
     if(o.life<=0){scene.remove(o.s);o.s.material.dispose();smokes.splice(i,1);}}
 }
+// ---- 飛行物（箭/投石，拋物線） ----
+const projs=[];
+function makeArrowMesh(){
+  const g=new THREE.Group();
+  const sh=new THREE.Mesh(new THREE.CylinderGeometry(.028,.028,.95,5),mat(0x8a6a40));
+  sh.rotation.x=Math.PI/2;g.add(sh);
+  const tip=new THREE.Mesh(new THREE.ConeGeometry(.055,.16,5),matM(0xc8ccd2));
+  tip.rotation.x=Math.PI/2;tip.position.z=.52;g.add(tip);
+  const fl=new THREE.Mesh(new THREE.BoxGeometry(.1,.022,.18),mat(0xe8e8e0));fl.position.z=-.42;g.add(fl);
+  return g;
+}
+function spawnProj(o){ // {x,y,h0,type,tx,ty,target?,dmg,team,splash?}
+  let mesh;
+  if(o.type==='arrow')mesh=makeArrowMesh();
+  else{mesh=new THREE.Mesh(new THREE.DodecahedronGeometry(.42,0),mat(0x6f6f6f));mesh.castShadow=true;}
+  scene.add(mesh);
+  const d=Math.hypot(o.tx-o.x,o.ty-o.y)||1;
+  const sp=o.type==='arrow'?620:300;
+  projs.push({...o,mesh,t:0,dur:d/sp,sx:o.x,sy:o.y,
+    arc:o.type==='arrow'?Math.min(2.2,d/150):Math.max(3,d/40)});
+}
+function dealDamage(t,dmg,fromTeam){
+  if(!t||t.hp===undefined||t.hp<=0)return;
+  if(t.team===fromTeam)return;
+  t.hp-=dmg;
+  const cx=t.w?t.x+t.w/2:t.x,cy=t.h?t.y+t.h/2:t.y;
+  spawnFx(cx,cy,'#ff4040',4);
+  if(t.hp<=0){playDeath();spawnFx(cx,cy,'#ff8030',20);
+    const isTc=(t===tc||t===etc);
+    if(!isTc&&!t.w){
+      if(t.team==='enemy'){stats.kills++;showStatus('殲滅敵軍！');}
+      else{stats.losses++;showStatus('單位陣亡');}}}
+}
+function updateProjs(dt){
+  for(let i=projs.length-1;i>=0;i--){const p=projs[i];
+    p.t+=dt;const k=Math.min(1,p.t/p.dur);
+    if(p.type==='arrow'&&p.target&&p.target.hp>0){
+      p.tx=p.target.w?p.target.x+p.target.w/2:p.target.x;
+      p.ty=p.target.h?p.target.y+p.target.h/2:p.target.y;}
+    const x=p.sx+(p.tx-p.sx)*k,y=p.sy+(p.ty-p.sy)*k;
+    const h=p.h0+( (p.type==='arrow'?1.2:0.6) - p.h0 )*k + Math.sin(Math.PI*k)*p.arc;
+    const px=p.mesh.position.x,pz=p.mesh.position.z,py2=p.mesh.position.y;
+    p.mesh.position.set(x/S,h,y/S);
+    if(p.type==='arrow'){
+      const dx=x/S-px,dy2=h-py2,dz=y/S-pz,dl=Math.hypot(dx,dz)||.0001;
+      p.mesh.rotation.y=Math.atan2(dx,dz);
+      p.mesh.rotation.x=-Math.atan2(dy2,dl);
+    }else{p.mesh.rotation.x+=dt*6;p.mesh.rotation.z+=dt*4;}
+    if(k>=1){
+      if(p.splash){
+        spawnFx(p.tx,p.ty,'#ff8020',14);play(180,60,.25,.4,'sawtooth');
+        for(const t2 of[...units,tc,etc,...buildings]){
+          if(!t2)continue;
+          const tx2=t2.w?(t2.x+t2.w/2):t2.x,ty2=t2.h?(t2.y+t2.h/2):t2.y;
+          if(Math.hypot(tx2-p.tx,ty2-p.ty)>p.splash)continue;
+          dealDamage(t2,t2.w?p.dmg*3:p.dmg,p.team);}
+      }else{
+        playHit();dealDamage(p.target,p.dmg,p.team);}
+      scene.remove(p.mesh);projs.splice(i,1);}
+  }
+}
 // ---- A* ----
 function blockedSet(){
   const s=new Set();
@@ -877,30 +938,19 @@ function updateCombat(v,dt){
       v.dir=Math.atan2(ex-v.x,ey-v.y);
       v.at-=dt;
       if(v.at<=0){v.at=v.cd;
-        const splash=v.type==='catapult'?(UNIT_DEFS.catapult.splash||0):0;
-        if(splash>0){
-          spawnFx(ex,ey,'#ff8020',12);play(180,60,.25,.4,'sawtooth');
-          for(const t2 of[...units,tc,etc,...buildings]){
-            if(!t2||t2===v)continue;
-            const tx2=t2.w?(t2.x+t2.w/2):t2.x,ty2=t2.h?(t2.y+t2.h/2):t2.y;
-            if(Math.hypot(tx2-ex,ty2-ey)>splash)continue;
-            if(t2.team===v.team)continue;
-            const dmg=t2.w?v.atk*3:v.atk;
-            if(t2.hp!==undefined)t2.hp-=dmg;
-            spawnFx(tx2,ty2,'#ff6020',4);
-          }
+        if(v.type==='catapult'){
+          // 投石：射向目標當前位置，落地先爆（範圍傷害，建築 3x）
+          spawnProj({x:v.x,y:v.y,h0:2.4,type:'rock',tx:ex,ty:ey,dmg:v.atk,team:v.team,
+            splash:UNIT_DEFS.catapult.splash||65});
+          play(120,60,.2,.3,'sawtooth');
+        }else if(v.rng>=100){
+          // 弓兵/連弩兵：射箭（追蹤目標）
+          spawnProj({x:v.x,y:v.y,h0:1.7,type:'arrow',tx:ex,ty:ey,target:e,dmg:v.atk,team:v.team});
+          play(880,460,.07,.12);
         }else{
           const bonusMult=(v.bonus&&e.type&&v.bonus[e.type])||1;
-          const dmg=v.atk*bonusMult;
-          e.hp-=dmg;spawnFx(ex,ey,'#ff4040',5);playHit();
-        }
-        if(e.hp!==undefined&&e.hp<=0){
-          playDeath();spawnFx(ex,ey,'#ff8030',20);
-          const isTc=(e===tc||e===etc);
-          if(!isTc){
-            if(e.team==='enemy'){stats.kills++;showStatus('殲滅敵軍！');}
-            else{stats.losses++;showStatus('單位陣亡');}
-          }}}}
+          playHit();dealDamage(e,v.atk*bonusMult,v.team);
+        }}}
     else{v.state='chase';v.tx=ex;v.ty=ey;}
   }
   if(v.team==='player'&&v.type!=='villager'&&v.state==='idle'){
@@ -916,11 +966,9 @@ function updateTowers(dt){
   for(const b of buildings){if(!b.complete||!b.atk||b.hp<=0)continue;
     const target=units.find(u=>u.team!==b.team&&u.hp>0&&Math.hypot(u.x-(b.x+b.w/2),u.y-(b.y+b.h/2))<b.rng);
     if(target){b.at-=dt;if(b.at<=0){b.at=b.cd;
-      target.hp-=b.atk;spawnFx(target.x,target.y,'#ff6060',4);playHit();
-      for(let i=0;i<3;i++){const p=.3+Math.random()*.4;
-        fx.push({x:b.x+b.w/2+(target.x-b.x-b.w/2)*p,y:b.y+b.h/2+(target.y-b.y-b.h/2)*p,
-          vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,life:.3,c:'#ddd',sz:2});}
-      if(target.hp<=0){playDeath();spawnFx(target.x,target.y,'#ff8030',15);}}}}
+      spawnProj({x:b.x+b.w/2,y:b.y+b.h/2,h0:b.type==='castle_bldg'?11:8.6,
+        type:'arrow',tx:target.x,ty:target.y,target,dmg:b.atk,team:b.team});
+      play(880,460,.07,.1);}}}
 }
 // ---- 敵方 AI ----
 let eaiTimer=0;const EAI_INTERVAL=2;
@@ -1017,7 +1065,7 @@ function update(dt){
     units.splice(i,1);upPop();}}
   for(const v of units){if(v.state==='building'&&v.tBldg&&v.tBldg.complete){v.state='idle';v.tBldg=null;}}
   units.forEach(v=>{updateVil(v,dt);updateCombat(v,dt);});
-  gameTime+=dt;updateTowers(dt);enemyAI(dt);updateAge(dt);
+  gameTime+=dt;updateTowers(dt);enemyAI(dt);updateAge(dt);updateProjs(dt);
   for(const u of units){
     if(u.team==='player'&&u.hp>0&&u.hp<u.mh){
       const healR=techs.heal.done?10:5;
