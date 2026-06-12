@@ -944,18 +944,27 @@ function blockedSet(){
   for(const b of[tc,etc,...buildings]){if(!b.complete&&b!==tc&&b!==etc)continue;
     const gx=~~(b.x/WORLD.T),gy=~~(b.y/WORLD.T),gw=Math.ceil((b.w||100)/WORLD.T),gh=Math.ceil((b.h||100)/WORLD.T);
     for(let dx=0;dx<gw;dx++)for(let dy=0;dy<gh;dy++)s.add((gx+dx)+','+(gy+dy));}
-  // 城牆連線：相鄰牆之間 block 空隙，形成連續防線
+  // 城牆連線：相鄰牆之間 block 全部空隙 grid cells（Bresenham 線填充）
   const walls=buildings.filter(b=>b.type==='wall'&&b.complete);
   for(let i=0;i<walls.length;i++){
     for(let j=i+1;j<walls.length;j++){
       const a=walls[i],b=walls[j];
       const cxA=a.x+a.w/2,cyA=a.y+a.h/2,cxB=b.x+b.w/2,cyB=b.y+b.h/2;
-      if(Math.hypot(cxA-cxB,cyA-cyB)<56){ // 牆距 <56px 視為連接
-        const mx=(cxA+cxB)/2,my=(cyA+cyB)/2;
-        s.add(~~(mx/WORLD.T)+','+~~(my/WORLD.T));
-        // 額外 block 防止斜角穿過
-        s.add(~~(cxA/WORLD.T)+','+~~(cyB/WORLD.T));
-        s.add(~~(cxB/WORLD.T)+','+~~(cyA/WORLD.T));}}}
+      const dist=Math.hypot(cxA-cxB,cyA-cyB);
+      if(dist<56){ // 牆距 <56px 視為連接，block 沿途所有 cell
+        const steps=Math.ceil(dist/WORLD.T*2); // 每半格一個 sample
+        for(let k=0;k<=steps;k++){
+          const t=steps?k/steps:0;
+          const px=cxA+(cxB-cxA)*t,py=cyA+(cyB-cyA)*t;
+          s.add(~~(px/WORLD.T)+','+~~(py/WORLD.T));}
+        // Block wider — 加左右偏移防止繞過
+        const dx=-(cyB-cyA)/dist*30,dy=(cxB-cxA)/dist*30;
+        for(let k=0;k<=steps;k++){
+          const t=steps?k/steps:0;
+          const px=cxA+(cxB-cxA)*t+dx,py=cyA+(cyB-cyA)*t+dy;
+          s.add(~~(px/WORLD.T)+','+~~(py/WORLD.T));
+          const px2=cxA+(cxB-cxA)*t-dx,py2=cyA+(cyB-cyA)*t-dy;
+          s.add(~~(px2/WORLD.T)+','+~~(py2/WORLD.T));}}}}
   for(const u of units){if(u.hp<=0)continue;const gx=~~(u.x/WORLD.T),gy=~~(u.y/WORLD.T);s.add(gx+','+gy);}
   return s;
 }
