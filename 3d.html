@@ -152,6 +152,9 @@
   <button id="btnArch" onclick="trainUnit('archer')" style="display:none">🏹弓兵 <span class="costF">🍓40</span><span class="cost">🪵40</span></button>
   <button id="btnHorse" onclick="trainUnit('horseman')" style="display:none">🐴騎兵 <span class="costF">🍓80</span><span class="cost">🪵20</span></button>
   <button id="btnCata" onclick="trainUnit('catapult')" style="display:none">🪨投石車 <span class="cost">🪵80</span><span class="costF">🍓60</span><span class="costS">🪨30</span></button>
+  <button id="btnFormLine" onclick="setFormation('line')" style="display:none;border-color:#4080d0;">━━ 橫排</button>
+  <button id="btnFormBox" onclick="setFormation('box')" style="display:none;border-color:#80d040;">◫ 方陣</button>
+  <button id="btnFormScatter" onclick="setFormation('scatter')" style="display:none;border-color:#d08040;">✦ 散開</button>
   <button id="btnT1" onclick="doResearch('lumber')" style="display:none">🪓伐木效率 <span class="cost">🪵50</span><span class="costF">🍓30</span></button>
   <button id="btnT2" onclick="doResearch('military')" style="display:none">⚔️軍事訓練 <span class="costF">🍓60</span><span class="cost">🪵20</span></button>
   <button id="btnT3" onclick="doResearch('speed')" style="display:none">🏃行軍速度 <span class="costF">🍓50</span></button>
@@ -1070,7 +1073,7 @@ function issueCmd(wx,wy,list){
       v.tRes=t;v.gType=t.type;v.state='moving';v.tBldg=null;v.tEn=null;v.path=null;v.waypoints=[];
       const e=edgeOf(t,v);v.tx=e.x;v.ty=e.y;});showStatus(vils.length>1?`${vils.length}人採集`:'採集');playClick();spawnFx(wx,wy,'#80ff80',6);return;}
   sel.forEach(u=>{u.tRes=null;u.gType=null;u.tBldg=null;u.tEn=null;u.state='moving';u.waypoints=[];});
-  sel.forEach((u,i)=>{const r=Math.floor(i/4),c=i%4;u.tx=wx+(c-1.5)*25;u.ty=wy+r*25;u.path=null;});
+  if(curFormation==='line'){sel.forEach((u,i)=>{u.tx=wx+(i-(sel.length-1)/2)*30;u.ty=wy;u.path=null;});}else if(curFormation==='scatter'){sel.forEach((u,i)=>{u.tx=wx+(Math.random()-.5)*120;u.ty=wy+(Math.random()-.5)*120;u.path=null;});}else{const cols=Math.ceil(Math.sqrt(sel.length));sel.forEach((u,i)=>{const r=Math.floor(i/cols),c=i%cols;u.tx=wx+(c-(cols-1)/2)*30;u.ty=wy+r*30;u.path=null;});}
   // A-Move: 軍事單位移動中自動接敵
   sel.filter(u=>u.type!=='villager').forEach(u=>{
     u.path=aStar(u.x,u.y,wx,wy);u.pi=0;
@@ -1288,7 +1291,7 @@ function updateTowers(dt){
 // ---- 敵方 AI ----
 let eaiTimer=0;const EAI_INTERVAL=2;
 // ---- 敵方 AI (難度分級) ----
-let aiDiff='normal',aiPers='balanced',dayCycleOn=true; // AI 難度 + 個性 + 日夜開關
+let aiDiff='normal',aiPers='balanced',dayCycleOn=true,curFormation='box'; // AI 難度 + 個性 + 日夜開關 + 陣型
 try{const d=localStorage.getItem('aiDiff');if(d)aiDiff=d;}catch(e){}
 try{const d=localStorage.getItem('aiPers');if(d)aiPers=d;}catch(e){}
 window.setAiDiff=d=>{aiDiff=d;localStorage.setItem('aiDiff',d);showStatus('AI難度: '+d);};
@@ -1486,10 +1489,14 @@ function rdMenu(){
   const show=(id,cond)=>{const e=document.getElementById(id);if(!e)return e;e.style.display=cond?'':'none';return e;};
   const en=(id,cond)=>{const e=document.getElementById(id);if(e)e.disabled=!cond;};
   gm.style.display='flex';
-  const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3'].forEach(id=>show(id,0));
+  const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnSword','btnArch','btnHorse','btnCata','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3','btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>show(id,0));
   const ai=ageIdx(currentAge);
   const isGuest=mp.ready&&mp.role==='guest';
   const vs=sel.filter(u=>u.type==='villager'&&u.team===MYTEAM);
+  const ms=sel.filter(u=>u.type!=='villager'&&u.team===MYTEAM);
+  const showForm=ms.length>0&&vs.length===0;
+  show('btnFormLine',showForm);show('btnFormBox',showForm);show('btnFormScatter',showForm);
+  if(showForm){['btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>{const e=document.getElementById(id);if(e){const n=id.slice(7).toLowerCase();const active=n===curFormation;e.style.background=active?'rgba(100,100,60,.45)':'rgba(55,55,55,.9)';e.style.borderWidth=active?'3px':'2px';}});}
   if(vs.length>0){
     hideAll();show('bmenuLabel',0);
     en('btnHouse',canAfford(BUILD_DEFS.house.cost));show('btnHouse',1);
@@ -2246,6 +2253,7 @@ function applyGameSettings(role){
     if(typeof updateDayNight==='function')updateDayNight();} // 即鎖正午
 }
 window.closeLobby=()=>{document.getElementById('lobby').style.display='none';};
+window.setFormation=f=>{curFormation=f;['btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>{const e=document.getElementById(id);if(e){const n=id.slice(7).toLowerCase();const active=n===f;e.style.background=active?'rgba(100,100,60,.45)':'rgba(55,55,55,.9)';e.style.borderWidth=active?'3px':'2px';}});playClick();showStatus((f==='line'?'━━ 橫排':f==='scatter'?'✦ 散開':'◫ 方陣')+' 陣型');};
 window.startSinglePlayer=()=>{
   const res=document.getElementById('lbRes')?.value||'std';
   const ai=document.getElementById('lbAi')?.value||'normal';
