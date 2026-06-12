@@ -109,7 +109,7 @@
   background:rgba(0,0,0,.55);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #5090c0;">🎵 音樂</div>
 <div id="mpBtn" onclick="openLobby()" style="position:fixed;top:80px;right:8px;color:#80d0ff;font-size:12px;font-weight:bold;
   background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #4090d0;">🌐 對戰</div>
-<div id="lobby" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;
+<div id="lobby" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;overflow-y:auto;
   flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;">
   <div style="font-size:44px;">🌐</div>
   <div id="lbTitle" style="font-size:22px;font-weight:bold;margin:8px 0;">真人對戰（Beta）</div>
@@ -712,7 +712,7 @@ function selected(){return units.filter(u=>u.sel);}
 // ---- 音效 ----
 const AC=new(window.AudioContext||window.webkitAudioContext)();
 addEventListener('mousedown',()=>{if(AC.state==='suspended')AC.resume();},{once:0});
-function play(s,f,e,g,t){const o=AC.createOscillator(),gx=AC.createGain();o.type=t||'sine';
+function play(s,f,e,g,t){if(AC.state==='suspended')AC.resume();const o=AC.createOscillator(),gx=AC.createGain();o.type=t||'sine';
   o.frequency.setValueAtTime(s,AC.currentTime);if(f)o.frequency.exponentialRampToValueAtTime(f,AC.currentTime+(e||.1));
   gx.gain.setValueAtTime(g||.2,AC.currentTime);gx.gain.exponentialRampToValueAtTime(.001,AC.currentTime+(e||.1));
   o.connect(gx);gx.connect(AC.destination);o.start();o.stop(AC.currentTime+(e||.1));}
@@ -741,18 +741,18 @@ function playStep(heavy=false){
   const g=AC.createGain();g.gain.value=.35;
   src.connect(f);f.connect(g);g.connect(AC.destination);src.start();
 }
-function playTrainDone(){ // 訓練完成 — C-E-G 和弦叮
+function playTrainDone(){if(AC.state==='suspended')AC.resume(); // 訓練完成 — C-E-G 和弦叮
   [523,659,784].forEach(f=>{
     const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;
     g.gain.setValueAtTime(.15,AC.currentTime);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+.25);
     o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+.25);});}
-function playBuildDone(){ // 建築完成 — 號角 sweep
+function playBuildDone(){if(AC.state==='suspended')AC.resume(); // 建築完成 — 號角 sweep
   const l=AC.sampleRate*.35,b=AC.createBuffer(1,l,AC.sampleRate),d=b.getChannelData(0);
   for(let i=0;i<l;i++){const t=i/l;d[i]=Math.sin(t*Math.PI*2*(3+t*12))*(1-t)*.3+(Math.random()*2-1)*.15*(1-t);}
   const s=AC.createBufferSource();s.buffer=b;const f=AC.createBiquadFilter();f.type='lowpass';
   f.frequency.setValueAtTime(300,AC.currentTime);f.frequency.exponentialRampToValueAtTime(800,AC.currentTime+.35);
   const g=AC.createGain();g.gain.value=.4;s.connect(f);f.connect(g);g.connect(AC.destination);s.start();}
-function playAgeUp(){ // 時代升級 — 鐘聲 ascending
+function playAgeUp(){if(AC.state==='suspended')AC.resume(); // 時代升級 — 鐘聲 ascending
   [523,659,784,1047].forEach((f,i)=>{
     const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;
     const t=AC.currentTime+i*.12;g.gain.setValueAtTime(.18,t);g.gain.exponentialRampToValueAtTime(.001,t+.45);
@@ -764,12 +764,12 @@ function playDeathCry(){ // 陣亡 — descending scream
   const s=AC.createBufferSource();s.buffer=b;const f2=AC.createBiquadFilter();f2.type='bandpass';
   f2.frequency.setValueAtTime(600,AC.currentTime);f2.frequency.exponentialRampToValueAtTime(150,AC.currentTime+.2);
   const g2=AC.createGain();g2.gain.value=.3;s.connect(f2);f2.connect(g2);g2.connect(AC.destination);s.start();}
-function playVictory(){ // 勝利 — major fanfare C-E-G-C
+function playVictory(){if(AC.state==='suspended')AC.resume(); // 勝利 — major fanfare C-E-G-C
   [523,659,784,1047].forEach((f,i)=>{
     const o=AC.createOscillator(),g=AC.createGain();o.type='triangle';o.frequency.value=f;
     const t=AC.currentTime+i*.15;g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.55);
     o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+.55);});}
-function playDefeat(){ // 失敗 — descending minor
+function playDefeat(){if(AC.state==='suspended')AC.resume(); // 失敗 — descending minor
   [523,440,349,262].forEach((f,i)=>{
     const o=AC.createOscillator(),g=AC.createGain();o.type='triangle';o.frequency.value=f;
     const t=AC.currentTime+i*.18;g.gain.setValueAtTime(.18,t);g.gain.exponentialRampToValueAtTime(.001,t+.6);
@@ -782,7 +782,7 @@ const MUSIC_SEQ=[ // Am 小調琶音 (和平 120BPM)
 const MUSIC_WAR=[ // 戰鬥快板 (180BPM)
   [262,.2],[311,.15],[330,.15],[392,.2],[262,.15],[311,.15],[330,.15],[392,.15],
   [440,.2],[349,.15],[392,.15],[311,.15],[262,.2],[330,.15],[392,.15],[523,.2]];
-function startMusic(){
+function startMusic(){if(AC.state==='suspended')AC.resume();
   if(musicDrone)return;
   musicDrone=AC.createOscillator();musicDrone.type='triangle';musicDrone.frequency.value=130.81;
   musicDroneG=AC.createGain();musicDroneG.gain.value=.04;
@@ -802,6 +802,7 @@ function musicTick(dt){
   if(musicBeat>=beatLen){musicBeat-=beatLen;
     const seq=alertTimer>0?MUSIC_WAR:MUSIC_SEQ;
     const[freq,dur]=seq[musicNote%seq.length];
+    if(AC.state==='suspended')AC.resume();
     const t=AC.currentTime;const o=AC.createOscillator(),g=AC.createGain();
     o.type='triangle';o.frequency.value=freq;
     g.gain.setValueAtTime(.07,t);g.gain.exponentialRampToValueAtTime(.001,t+dur*.7);
@@ -1506,7 +1507,7 @@ function rdMenu(){
   const ms=sel.filter(u=>u.type!=='villager'&&u.team===MYTEAM);
   const showForm=ms.length>0&&vs.length===0;
   show('btnFormLine',showForm);show('btnFormBox',showForm);show('btnFormScatter',showForm);
-  if(showForm){['btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>{const e=document.getElementById(id);if(e){const n=id.slice(7).toLowerCase();const active=n===curFormation;e.style.background=active?'rgba(100,100,60,.45)':'rgba(55,55,55,.9)';e.style.borderWidth=active?'3px':'2px';}});}
+  if(showForm){show('bmenuLabel',1).textContent='📐 陣型';['btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>{const e=document.getElementById(id);if(e){const n=id.slice(7).toLowerCase();const active=n===curFormation;e.style.background=active?'rgba(100,100,60,.45)':'rgba(55,55,55,.9)';e.style.borderWidth=active?'3px':'2px';}});}
   if(vs.length>0){
     hideAll();show('bmenuLabel',0);
     en('btnHouse',canAfford(BUILD_DEFS.house.cost));show('btnHouse',1);
