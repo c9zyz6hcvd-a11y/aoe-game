@@ -1306,7 +1306,7 @@ const AI_CFG={easy:{iv:2.0,eco:0.7,aggro:0.3,micro:0.4,cheat:0},
 // AI 個性參數: {vilTarget, rushTime, defBldgPri, unitPref, ageRush}
 const PERS={
   rusher:  {vilMax:10,rushSec:100,defPri:0,pref:'spearman', ageHurry:0,  ecoBias:0.6},
-  boomer:  {vilMax:18,rushSec:300,defPri:0,pref:'knight',   ageHurry:1.3,ecoBias:1.4},
+  boomer:  {vilMax:21,rushSec:300,defPri:0,pref:'knight',   ageHurry:1.3,ecoBias:1.4},
   turtler: {vilMax:12,rushSec:250,defPri:2,pref:'archer',   ageHurry:0.7,ecoBias:0.8},
   balanced:{vilMax:14,rushSec:180,defPri:1,pref:'swordsman',ageHurry:1.0,ecoBias:1.0},
 };
@@ -1335,7 +1335,9 @@ function enemyAI(dt){
   if(eVils.length<wantVils&&eUnits.length<ePopCap&&eFood>=50){
     eFood-=50;const v=makeUnit(etc.x+etc.w/2-20+Math.random()*40,etc.y+etc.h+10,'villager','enemy');
     v.sp=130;v.patrolX=etc.x;v.patrolY=etc.y;units.push(v);
-    if(eVils.length===0)eFood+=50;}// 第一個村民免費(安全網)
+    if(eVils.length===0)eFood+=50;
+    // Boomer: 每 tick 有機會雙倍生村民
+    if(aiPers==='boomer'&&eVils.length<wantVils-1&&eUnits.length<ePopCap&&eFood>=50){eFood-=50;const v2=makeUnit(etc.x+etc.w/2+10+Math.random()*30,etc.y+etc.h+10,'villager','enemy');v2.sp=130;v2.patrolX=etc.x;v2.patrolY=etc.y;units.push(v2);}}// 第一個村民免費(安全網)
   // === Phase 2: 建屋順序 (每 tick 最多一棟) ===
   let builtThisTick=0;
   const buildIf=(cond,type,costCheck)=>{
@@ -1354,7 +1356,10 @@ function enemyAI(dt){
   buildIf(!hasTower&&hasBsk&&eMil.length>=(pers.defPri>=2?2:4)&&eAge>=1,'tower',d=>eWood>=d.cost.wood&&eStone>=d.cost.stone);
   if(pers.defPri>=2&&hasTower){ // Turtler: 起多幾座箭塔
     const towerCount=eBldgs.filter(b=>b.type==='tower'&&b.complete).length;
-    if(towerCount<3)buildIf(hasBsk&&eWood>=50&&eStone>=30,'tower',d=>eWood>=d.cost.wood&&eStone>=d.cost.stone);}
+    if(towerCount<3)buildIf(hasBsk&&eWood>=50&&eStone>=30,'tower',d=>eWood>=d.cost.wood&&eStone>=d.cost.stone);
+    // 同時起牆防守 (每3分鐘+2面)
+    const wallCount=eBldgs.filter(b=>b.type==='wall'&&b.complete).length;
+    const wantWalls=2+Math.floor(gameTime/180);if(wallCount<wantWalls&&!builtThisTick)buildIf(eWood>=30&&eStone>=10,'wall',d=>eWood>=d.cost.wood&&eStone>=d.cost.stone);}
   // === Phase 3: 資源調度 ===
   for(const v of eVilIds){
     const eco=pers.ecoBias||1;
@@ -1405,12 +1410,13 @@ function enemyAI(dt){
   const minAtt=aiDiff==='hard'?3:(aiDiff==='normal'?4:6);
   if(gameTime>=pers.rushSec&&attReady>=minAtt){
     const attackChance=aiDiff==='hard'?.08:(aiDiff==='normal'?.05:.025);
-    if(Math.random()<attackChance*cfg.aggro){
+    const rusherForce=aiPers==='rusher'&&gameTime<200&&attReady>=2; // 3分鐘內強制出擊
+    if(rusherForce||Math.random()<attackChance*cfg.aggro){
       const target=pMil[0]||pUnits[0]||tc;
       const tcx=target.w?(target.x+target.w/2):(target.x||tc.x+tc.w/2);
       const tcy=target.h?(target.y+target.h/2):(target.y||tc.y+tc.h/2);
       // 集中兵力: 全部或部分
-      const wave=eMil.slice(0,Math.min(eMil.length,Math.floor(attReady*cfg.micro)));
+      const wave=eMil.slice(0,Math.min(eMil.length,rusherForce?eMil.length:Math.floor(attReady*cfg.micro)));
       wave.forEach(u=>{u.tEn=target;u.state='chase';u.tx=tcx;u.ty=tcy;u.path=null;});}
   }
 }
