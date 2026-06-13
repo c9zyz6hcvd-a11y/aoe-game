@@ -1605,8 +1605,11 @@ function update(dt){
     const ws=Math.max(0,Math.floor(waveTimer));waveEtaEl.textContent=Math.floor(ws/60)+':'+(ws%60<10?'0':'')+(ws%60);
   }
   if(dsEnabled){dsTimer+=dt;if(dsTimer>DS_INTERVAL){dsTimer=0;callDeepSeek();}}
-  if(tc.hp<=0)endGame(false);
-  if(etc.hp<=0)endGame(true);
+  // annihilate 模式：唔可以淨拆主堡就贏，要殲滅晒（交畀下面個 block 判）
+  if(victCond!=='annihilate'){
+    if(tc.hp<=0)endGame(false);
+    if(etc.hp<=0)endGame(true);
+  }
   // 勝利條件
   if(!isGameOver){
     if(victCond==='annihilate'){
