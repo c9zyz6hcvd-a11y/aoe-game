@@ -139,6 +139,8 @@
       border:1px solid #555;border-radius:8px;width:200px;text-align:center;">
     <button onclick="mpJoin(document.getElementById('lbJoinInput').value.trim())" style="font-size:13px;padding:8px 18px;
       background:#409050;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">🚪 加入</button>
+    <button onclick="mpSpectate(document.getElementById('lbJoinInput').value.trim())" style="font-size:13px;padding:8px 18px;
+      background:#7060b0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">👁️ 觀戰</button>
   </div>
 </div>
 <div id="status"></div>
@@ -338,7 +340,7 @@ let statusTimer=0;
 function showStatus(m){statusEl.textContent=m;statusEl.style.opacity=1;statusTimer=3;}
 let popCap=5;
 let MYTEAM='player'; // 多人時 guest = 'enemy'（紅方）
-const mp={role:null,conn:null,peer:null,ready:false,snap:null,via:null,send:()=>{}};
+const mp={role:null,conn:null,peer:null,ready:false,snap:null,via:null,send:()=>{},specConns:[]};
 function playerCount(){return units.filter(u=>u.team===MYTEAM).length;}
 function upPop(){popEl.textContent=playerCount();popCapEl.textContent=popCap;}
 let gameTime=0;
@@ -485,6 +487,7 @@ function findSpot(cx,cy,bw,bh,bt){
 function canAfford(c){return(!c.wood||wood>=c.wood)&&(!c.food||food>=c.food)&&(!c.stone||stone>=c.stone)&&(!c.gold||gold>=c.gold);}
 function spend(c){if(c.wood){wood-=c.wood;woodEl.textContent=wood;}if(c.food){food-=c.food;foodEl.textContent=food;}if(c.stone){stone-=c.stone;stoneEl.textContent=stone;}if(c.gold){gold-=c.gold;goldEl.textContent=gold;}}
 function startBuild(type){
+  if(isSpectator())return;
   const def=BUILD_DEFS[type];if(!def)return;
   if(mp.ready&&mp.role==='guest'){
     if(!canAfford(def.cost)){showStatus('資源不足');return;}
@@ -534,6 +537,7 @@ function canAdvanceAge(){
   return missing.length===0;
 }
 function advanceAge(){
+  if(isSpectator())return;
   if(mp.ready&&mp.role==='guest'){
     const a=AGES[eCurrentAge];if(!a.next)return;
     if(!canAfford(a.cost)){showStatus('資源不足');return;}
@@ -564,6 +568,7 @@ function updateAge(dt){
     const ert=AGES[eCurrentAge].resTime;eAgeTimer+=dt;
     if(eAgeTimer>=ert){eAgeUpgrading=false;eAgeTimer=0;eCurrentAge=AGES[eCurrentAge].next;}}}
 function trainVillager(){
+  if(isSpectator())return;
   if(!canAfford({food:50})){showStatus('食物不足');return;}
   if(mp.ready&&mp.role==='guest'){mp.send({c:'vil'});playDrop();showStatus('👤 新村民');return;}
   if(playerCount()>=popCap){showStatus('人口已滿');return;}
@@ -573,6 +578,7 @@ function trainVillager(){
   stats.built++;
   playTrainDone();playDrop();spawnFx(c.x,c.y+tc.h,'#80ff80',10);showStatus('👤 新村民');}
 function trainUnit(type){
+  if(isSpectator())return;
   const def=UNIT_DEFS[type];if(!def)return;
   if(mp.ready&&mp.role==='guest'){
     if(!canAfford(def.cost)){showStatus('資源不足');return;}
@@ -587,6 +593,7 @@ function trainUnit(type){
   u.state='moving';units.push(u);upPop();stats.built++;
   playTrainDone();playClick();spawnFx(u.x,u.y,'#80c0ff',10);showStatus('⚔️ '+def.name);}
 function doResearch(key){
+  if(isSpectator())return;
   if(mp.ready&&mp.role==='guest'){
     const t=eTechs[key];if(!t||t.done)return;
     if(eResearchQueue){showStatus('研究中…');return;}
@@ -1119,6 +1126,7 @@ function findEnemyAt(wx,wy,team=MYTEAM){
 }
 function edgeOf(t,v){const d=Math.hypot(t.x-v.x,t.y-v.y)||.001;return{x:t.x+(v.x-t.x)/d*(t.r+18),y:t.y+(v.y-t.y)/d*(t.r+18)};}
 function issueCmd(wx,wy,list){
+  if(isSpectator())return;
   const sel=list||selected();if(!sel.length)return;
   if(!list)selectedBldg=null;
   // Shift+Click: 排 waypoint（唔取代而家嘅指令）
@@ -1750,9 +1758,12 @@ function updateUnitInfo(){
   const bar=document.getElementById('uiHpBar');
   bar.style.width=(r*100).toFixed(0)+'%';
   bar.style.background=r>.5?'#4a4':r>.25?'#da4':'#e33';
-  const rows=[`❤️ ${Math.ceil(u.hp)}/${u.mh}`,`⚔️ 攻擊 ${u.atk}`];
-  if(u.rng>=100)rows.push(`🎯 射程 ${u.rng}`);
-  rows.push(`👟 速度 ${u.sp}`);
+  // snapshot 同步嘅單位（guest/觀戰）冇帶 atk/sp/rng → 由 UNIT_DEFS fallback
+  const def=UNIT_DEFS[u.type]||{atk:3,sp:150,rng:22};
+  const atk=u.atk??def.atk, sp=u.sp??def.sp, rng=u.rng??def.rng;
+  const rows=[`❤️ ${Math.ceil(u.hp)}/${u.mh}`,`⚔️ 攻擊 ${atk}`];
+  if(rng>=100)rows.push(`🎯 射程 ${rng}`);
+  rows.push(`👟 速度 ${sp}`);
   if(u.type==='villager'&&u.ca>0)rows.push(`🎒 揹住 ${u.ca}`);
   document.getElementById('uiStats').innerHTML=rows.join('　');
 }
@@ -2474,23 +2485,39 @@ function mpGo(role){ // 接通後共同初始化
     sendInit();showStatus('🌐 對手已加入！開戰！');
   }else showStatus('🌐 已連線！你係紅方（右邊基地）！');
 }
+function specGo(){ // 觀戰者接通後初始化（睇晒兩隊、唔發指令、free cam）
+  mp.role='spectator';mpStart();window.closeLobby();
+  setFog(0); // 觀戰睇晒成個地圖
+  document.getElementById('mpBtn').style.display='none';
+  camDist=130;camT.x=MAPCX;camT.z=MAPCZ;clampCam();updateCamera();
+  showStatus('👁️ 觀戰模式 — 你睇緊呢場對戰');
+}
+function isSpectator(){return mp.role==='spectator';}
 // 後備通道：同一部機/同瀏覽器嘅兩個分頁用 BroadcastChannel 直連
 function bcSetup(id,role){
   if(!window.BroadcastChannel)return;
   mp.bc=new BroadcastChannel('rts3d-'+id);
   mp.bc.onmessage=ev=>{
     const m=ev.data;if(!m||m.from===role)return;
-    if(!mp.ready){
-      mp.via='bc';mp.send=d=>mp.bc.postMessage({from:role,d});
-      mpGo(role);
+    if(role==='host'){
+      // host 只認 guest 做對手；spectator 唔會 promote，但 host 照廣播快照畀佢
+      if(!mp.ready&&m.from==='guest'){
+        mp.via='bc';mp.send=d=>mp.bc.postMessage({from:'host',d});
+        mpGo('host');}
+      if(mp.via==='bc'&&m.from==='guest'&&m.d)hostRecv(m.d);
+    }else if(role==='guest'){
+      if(!mp.ready){mp.via='bc';mp.send=d=>mp.bc.postMessage({from:'guest',d});mpGo('guest');}
+      if(mp.via==='bc'&&m.from==='host'&&m.d)guestRecv(m.d);
+    }else{ // spectator：只收 host 廣播，render，唔發指令
+      if(m.from==='host'&&m.d){
+        if(!mp.ready){mp.ready=true;mp.via='bc';specGo();}
+        guestRecv(m.d);}
     }
-    if(mp.via!=='bc')return;
-    if(m.d)role==='host'?hostRecv(m.d):guestRecv(m.d);
   };
-  if(role==='guest'){
+  if(role==='guest'||role==='spectator'){
     mp.helloT=setInterval(()=>{
-      if(mp.ready){clearInterval(mp.helloT);return;}
-      mp.bc.postMessage({from:'guest',d:null});},400);
+      if(mp.ready&&role==='guest'){clearInterval(mp.helloT);return;}
+      mp.bc.postMessage({from:role,d:null});},400);
   }
 }
 window.mpHost=async()=>{
@@ -2504,7 +2531,8 @@ window.mpHost=async()=>{
     const url=location.origin+location.pathname+'?join='+id;
     const el=document.getElementById('lbLink');
     el.textContent=url;el.style.display='block';
-    document.getElementById('lbHint').style.display='block';
+    const hint=document.getElementById('lbHint');hint.style.display='block';
+    hint.innerHTML='↑ 對手連結（點複製）。觀戰連結：<br><span style="color:#a89cf0;word-break:break-all;">'+location.origin+location.pathname+'?spectate='+id+'</span>';
     document.getElementById('lbBody').textContent='房間已開！';
     if(navigator.clipboard)navigator.clipboard.writeText(url).catch(()=>{});
     bcSetup(id,'host');
@@ -2518,8 +2546,18 @@ window.mpHost=async()=>{
       if(mp.reconnecting){mp.reconnecting=false;mp.ready=true;
         clearTimeout(mp.reconnectT);sendInit();showStatus('🌐 對手已重連！');timerEl.textContent='🌐 對戰中';return;}
       mpGo('host');});
-    c.on('data',d=>{if(mp.via==='peer')hostRecv(d);});
-    c.on('close',()=>{if(mp.via==='peer'){mp.ready=false;mp.reconnecting=true;showStatus('⚠️ 對手斷線，等待重連(30s)...');timerEl.textContent='⏳ 重連中';
+    c.on('data',d=>{
+      if(d&&d.c==='spectate'){ // 觀戰者報到：登記 + 即刻送初始地圖，之後快照會 fan-out
+        if(!mp.specConns.includes(c))mp.specConns.push(c);
+        c.send({c:'init',
+          trees:trees.map(t=>[Math.round(t.x),Math.round(t.y),t.res]),
+          bushes:bushes.map(b=>[Math.round(b.x),Math.round(b.y),b.res]),
+          stones:stones.map(s=>[Math.round(s.x),Math.round(s.y),s.res]),
+          golds:goldMines.map(g=>[Math.round(g.x),Math.round(g.y),g.res])});
+        return;}
+      if(mp.via==='peer')hostRecv(d);});
+    c.on('close',()=>{const si=mp.specConns.indexOf(c);if(si>=0){mp.specConns.splice(si,1);return;}
+      if(mp.via==='peer'){mp.ready=false;mp.reconnecting=true;showStatus('⚠️ 對手斷線，等待重連(30s)...');timerEl.textContent='⏳ 重連中';
       mp.reconnectT=setTimeout(()=>{if(!mp.ready){showStatus('💀 對手超時');endGame(true);}},30000);}});
   });
 };
@@ -2550,6 +2588,23 @@ function mpJoin(id){
     });
   }).catch(()=>{showStatus('PeerJS 載入失敗（同機分頁照玩）');bcSetup(id,'guest');});
 }
+function mpSpectate(id){
+  if(!id){showStatus('請貼上 Room ID');return;}
+  mp.role='spectator';
+  loadPeerJS().then(()=>{
+    document.getElementById('lbTitle').textContent='連接緊觀戰…';
+    window.openLobby();
+    bcSetup(id,'spectator');
+    mp.peer=new Peer();
+    mp.peer.on('error',e=>console.log('[MP spec] peer error',e.type));
+    mp.peer.on('open',()=>{
+      const c=mp.peer.connect(id,{reliable:true});
+      c.on('open',()=>{c.send({c:'spectate'}); // 跟 host 報到（peer 路徑）
+        mp.specConn=c;});
+      c.on('data',d=>{if(!mp.ready){mp.ready=true;mp.via='peer';specGo();}guestRecv(d);});
+    });
+  }).catch(()=>{showStatus('PeerJS 載入失敗（同機分頁可觀戰）');bcSetup(id,'spectator');});
+}
 function mpStart(){ // 兩邊：清 AI 嘢、隱藏波次條
   document.getElementById('wavebar').style.display='none';
   document.getElementById('mpBtn').style.display='none';
@@ -2563,7 +2618,7 @@ function sendInit(){
     golds:goldMines.map(g=>[Math.round(g.x),Math.round(g.y),g.res])});
 }
 function sendSnap(){
-  mp.send({c:'snap',
+  const snap={c:'snap',
     u:units.map(u=>[u.i,TYPE_IDS.indexOf(u.type),u.team==='enemy'?1:0,
       Math.round(u.x),Math.round(u.y),Math.round(u.hp),u.mh,u.mv?1:0,
       +(u.dir||0).toFixed(2),Math.max(0,ST_IDS.indexOf(u.state)),u.ca||0]),
@@ -2575,7 +2630,9 @@ function sendSnap(){
     rs:[trees.map(t=>t.res),bushes.map(b=>b.res),stones.map(s=>s.res),goldMines.map(g=>g.res)],
     et:Object.keys(eTechs).map(k=>eTechs[k].done?1:0),
     erq:eResearchQueue?Object.keys(eTechs).indexOf(eResearchQueue):-1,
-    ea:ageIdx(eCurrentAge),eaUp:eAgeUpgrading?1:0});
+    ea:ageIdx(eCurrentAge),eaUp:eAgeUpgrading?1:0};
+  mp.send(snap); // BC: 廣播到 guest + 所有 BC 觀戰者；peer: 送 guest
+  for(const c of mp.specConns){try{c.send(snap);}catch(e){}} // peer 觀戰者 fan-out
 }
 function hostRecv(d){
   console.log('[MP host] recv',d.c);
@@ -2698,9 +2755,11 @@ function guestTick(dt){
   rdMenu();upIdle();upGrpLabels();camKeys(dt);
   timerEl.textContent='🌐 對戰中';
 }
-// URL ?join=xxx 自動入房
-{const jid=new URLSearchParams(location.search).get('join');
- if(jid)setTimeout(()=>mpJoin(jid),300);}
+// URL ?join=xxx 自動入房；?spectate=xxx 自動觀戰
+{const q=new URLSearchParams(location.search);
+ const jid=q.get('join'),sid=q.get('spectate');
+ if(jid)setTimeout(()=>mpJoin(jid),300);
+ else if(sid)setTimeout(()=>mpSpectate(sid),300);}
 // ================= Fog of War =================
 const FOG={on:(localStorage.fog??'1')==='1',C:40,W:Math.ceil(WORLD.w/40),H:Math.ceil(WORLD.h/40)};
 FOG.exp=new Uint8Array(FOG.W*FOG.H);FOG.vis=new Uint8Array(FOG.W*FOG.H);
@@ -2767,6 +2826,7 @@ function setFog(on){FOG.on=!!on;localStorage.fog=on?'1':'0';fogPlane.visible=FOG
     if(etc.hp>0)etcMesh.visible=true;if(tc.hp>0)tcMesh.visible=true;}
   showStatus(FOG.on?'🌫️ 戰爭迷霧：開':'🌫️ 戰爭迷霧：關');}
 window.setFog=setFog;
+window.mpJoin=mpJoin;window.mpSpectate=mpSpectate; // onclick 用，module scope 唔自動上 window
 // debug handle
 // 單機模式：讀上次 lobby 設定
 (function(){
@@ -2787,7 +2847,9 @@ window.__G={units,buildings,trees,bushes,stones,goldMines,sw,camT,issueCmd,selec
   age:()=>currentAge,tc,etc,techs,AGES,
   setAge:a=>{currentAge=a;ageBadgeEl.textContent=AGES[a].icon+AGES[a].name;},
   setTime:t=>{gameTime=t;},
-  charLib,loadGLB,SkeletonUtils,scene,mp};
+  charLib,loadGLB,SkeletonUtils,scene,mp,
+  ptick:dt=>{if(mp.ready&&(mp.role==='guest'||mp.role==='spectator'))guestTick(dt||.1);},
+  setFog};
 // ---- 主迴圈 ----
 let last=performance.now();
 function loop(){
@@ -2795,7 +2857,7 @@ function loop(){
   dt=Math.min(dt,.05);
   if(W!==innerWidth||H!==innerHeight)resize();
   updateCamera();
-  if(mp.ready&&mp.role==='guest')guestTick(dt);else update(dt);
+  if(mp.ready&&(mp.role==='guest'||mp.role==='spectator'))guestTick(dt);else update(dt);
   updateDayNight();
   syncScene(dt,now);
   updateFog(dt);redrawFogTex();applyFog();
