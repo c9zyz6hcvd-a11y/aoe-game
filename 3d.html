@@ -775,7 +775,7 @@ function selected(){return units.filter(u=>u.sel);}
 // ---- 音效 ----
 const AC=new(window.AudioContext||window.webkitAudioContext)();
 // 全域音效 master chain：compressor 防止多人戰鬥炸耳
-const soundMaster=AC.createDynamicsCompressor();soundMaster.threshold.setValueAtTime(-24,AC.currentTime);soundMaster.knee.setValueAtTime(12,AC.currentTime);soundMaster.ratio.setValueAtTime(8,AC.currentTime);soundMaster.attack.setValueAtTime(.003,AC.currentTime);soundMaster.release.setValueAtTime(.15,AC.currentTime);soundMaster.connect(soundMaster);
+const soundMaster=AC.createDynamicsCompressor();soundMaster.threshold.setValueAtTime(-24,AC.currentTime);soundMaster.knee.setValueAtTime(12,AC.currentTime);soundMaster.ratio.setValueAtTime(8,AC.currentTime);soundMaster.attack.setValueAtTime(.003,AC.currentTime);soundMaster.release.setValueAtTime(.15,AC.currentTime);soundMaster.connect(AC.destination);
 // 同款音效 cooldown 防重疊（key→lastTime）
 const soundCDs={};
 function canPlaySnd(key,cd=.1){const t=AC.currentTime;if(soundCDs[key]&&t-soundCDs[key]<cd)return false;soundCDs[key]=t;return true;}
