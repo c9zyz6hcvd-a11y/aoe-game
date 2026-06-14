@@ -150,6 +150,7 @@
   <button id="btnBarracks" onclick="startBuild('barracks')" style="display:none">⚔️兵營 <span class="cost">🪵50</span><span class="costF">🍓20</span></button>
   <button id="btnTower" onclick="startBuild('tower')" style="display:none">🏗️箭塔 <span class="cost">🪵60</span><span class="costS">🪨40</span></button>
   <button id="btnWall" onclick="startBuild('wall')" style="display:none">🧱城牆 <span class="cost">🪵10</span></button>
+  <button id="btnClear" onclick="startClear()" style="display:none">🧹清地 <span class="costS">移除樹/石/果叢</span></button>
   <button id="btnTrainVil" onclick="trainVillager()" style="display:none">👤村民 <span class="costF">🍓50</span></button>
   <button id="btnAutoVil" onclick="autoDistributeVils()" style="display:none;border-color:#80d040;">⚖️ 自動分工</button>
   <button id="btnSword" onclick="trainUnit('swordsman')" style="display:none">🗡️劍兵 <span class="costF">🍓60</span><span class="cost">🪵10</span></button>
@@ -510,8 +511,30 @@ function startBuild(type){
     v.tx=sp.x+10+c*30;v.ty=sp.y-15-r*28;v.tBldg=b;v.path=null;});
   playClick();showStatus('建造'+def.name);
 }
+function startClear(){
+  if(isSpectator())return;
+  placingType='clear';
+  showStatus('🧹 點地清除附近樹/石/果叢/金礦 (連續清 / Esc 完成)');playClick();
+}
+function clearAround(wpos){
+  const R=58; // 清除半徑
+  let removed=0;
+  for(const arr of[trees,bushes,stones,goldMines]){
+    for(let i=arr.length-1;i>=0;i--){const o=arr[i];
+      if(Math.hypot(o.x-wpos.x,o.y-wpos.y)<=R){
+        if(o.mesh)scene.remove(o.mesh);
+        // 有村民正採緊呢個資源 → 解除
+        for(const u of units)if(u.tRes===o){u.tRes=null;u.state='idle';}
+        arr.splice(i,1);removed++;
+        spawnFx(o.x,o.y,o.type==='wood'?'#8a6a30':o.type==='food'?'#c04050':o.type==='gold'?'#f4d03f':'#999',8);
+      }}
+  }
+  if(removed){playChop();showStatus('🧹 清咗 '+removed+' 個障礙');}
+  else showStatus('附近冇嘢清');
+}
 function placeBuilding(wpos){
   if(!placingType)return;
+  if(placingType==='clear'){clearAround(wpos);return;} // 清地模式：留住連續清，Esc 退
   const def=BUILD_DEFS[placingType];if(!def){placingType=null;return;}
   if(!canAfford(def.cost)){showStatus('資源不足，退出建造');placingType=null;return;}
   const isWall=placingType==='wall';
@@ -1076,7 +1099,7 @@ function selectAllVils(){units.forEach(u=>{u.sel=u.team===MYTEAM&&u.type==='vill
 function selectAllMil(){units.forEach(u=>{u.sel=u.team===MYTEAM&&u.type!=='villager'?1:0;});selectedBldg=null;showStatus('全選士兵');}
 function escAction(){units.forEach(u=>u.sel=0);selectedBldg=null;showStatus('取消');}
 window.selectAllVils=selectAllVils;window.selectAllMil=selectAllMil;window.escAction=escAction;
-window.startBuild=startBuild;window.trainVillager=trainVillager;window.trainUnit=trainUnit;
+window.startBuild=startBuild;window.trainVillager=trainVillager;window.trainUnit=trainUnit;window.startClear=startClear;
 window.doResearch=doResearch;window.advanceAge=advanceAge;
 // ---- 觸控 ----
 let pinchDist0=0, pinchZ0=0, panTouch=null;
@@ -1252,6 +1275,15 @@ function camKeys(dt){const v=camDist*.9*dt;let mx=0,mz=0;
   if(keys.ArrowLeft)mx-=1;if(keys.ArrowRight)mx+=1;if(keys.ArrowUp)mz-=1;if(keys.ArrowDown)mz+=1;
   if(mx||mz){camT.x+=mx*v;camT.z+=mz*v;clampCam();updateCamera();}}
 // ================= 更新邏輯 =================
+// 單位中心點唔可以入任何完成建築嘅 rect（margin 令相鄰城牆 rect 重疊 → 封死縫隙）
+function blockedAt(x,y){
+  const m=2;
+  for(const b of buildings){
+    if(!b.complete||b.hp<=0)continue;
+    if(x>b.x-m&&x<b.x+b.w+m&&y>b.y-m&&y<b.y+b.h+m)return true;
+  }
+  return false;
+}
 function mvUnit(v,dt){
   stepCooldown=Math.max(0,stepCooldown-dt);
   const dx=v.tx-v.x,dy=v.ty-v.y,d=Math.hypot(dx,dy);
@@ -1260,29 +1292,21 @@ function mvUnit(v,dt){
     const prevWt=v.wt; v.wt+=dt*spd;
     const s=Math.min(d,v.sp*dt);
     const nx=v.x+dx/d*s,ny=v.y+dy/d*s;
-    // 直接 rectangle 碰撞檢測：單位唔可以穿過建築物
-    let blocked=false;
-    for(const b of buildings){
-      if(!b.complete)continue;
-      if(nx>b.x-1&&nx<b.x+b.w+1&&ny>b.y-1&&ny<b.y+b.h+1){blocked=true;break;}
-    }
-    if(blocked){
-      // 試 A* 繞路（cooldown 防止 chase 單位每幀重跑全圖 A* 拖死 FPS）
+    // 滑牆式碰撞：中心點永遠唔可以入任何完成建築嘅 rect（含 margin）→ 100% 封死
+    if(!blockedAt(nx,ny)){
+      v.x=nx;v.y=ny;v.dir=Math.atan2(dx,dy);
+    }else if(!blockedAt(nx,v.y)){
+      v.x=nx;v.dir=Math.atan2(dx,dy);          // 沿牆滑 X
+    }else if(!blockedAt(v.x,ny)){
+      v.y=ny;v.dir=Math.atan2(dx,dy);          // 沿牆滑 Y
+    }else{
+      // 完全卡住 → A* 繞路（cooldown 防 chase 單位每幀重跑全圖拖 FPS）
       v.rpT=(v.rpT||0)-dt;
       if((!v.path||v.path.length===0)&&v.rpT<=0){
         v.rpT=.8+Math.random()*.6;
         v.path=aStar(v.x,v.y,v.tx,v.ty);v.pi=0;
         if(v.path&&v.path.length>0){v.tx=v.path[0].x;v.ty=v.path[0].y;}
-        else{v.path=[];v.tx=v.x;v.ty=v.y;} // A* fail: stop
       }
-      // 跟新方向行（如果冇 path 就原地停）
-      const ndx=v.tx-v.x,ndy=v.ty-v.y,nd=Math.hypot(ndx,ndy);
-      const ns=Math.min(nd,v.sp*dt);
-      v.x+=nd>2?ndx/nd*ns:0;v.y+=nd>2?ndy/nd*ns:0;
-      v.dir=nd>2?Math.atan2(ndx,ndy):v.dir;
-    }else{
-      v.x=nx;v.y=ny;
-      v.dir=Math.atan2(dx,dy);
     }
     if(Math.sin(prevWt)>=0&&Math.sin(v.wt)<0){
       const heavy=v.type==='horseman'||v.type==='knight'||v.type==='catapult';
@@ -1666,7 +1690,7 @@ function rdMenu(){
   const show=(id,cond)=>{const e=document.getElementById(id);if(!e)return e;e.style.display=cond?'':'none';return e;};
   const en=(id,cond)=>{const e=document.getElementById(id);if(e)e.disabled=!cond;};
   gm.style.display='flex';
-  const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnTrainVil','btnAutoVil','btnSword','btnArch','btnHorse','btnCata','btnMonk','btnScout','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3','btnTW1','btnTW2','btnTW3','btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>show(id,0));
+  const hideAll=()=>['btnGarrison','btnUngarrison','btnHouse','btnBarracks','btnTower','btnWall','btnClear','btnTrainVil','btnAutoVil','btnSword','btnArch','btnHorse','btnCata','btnMonk','btnScout','btnT1','btnT2','btnT3','btnT4','btnMill','btnBlacksmith','btnCastle','btnSpear','btnKnight','btnMassArm','btnAgeUp','btnBS1','btnBS2','btnBS3','btnTW1','btnTW2','btnTW3','btnFormLine','btnFormBox','btnFormScatter'].forEach(id=>show(id,0));
   const ai=ageIdx(currentAge);
   const isGuest=mp.ready&&mp.role==='guest';
   const vs=sel.filter(u=>u.type==='villager'&&u.team===MYTEAM);
@@ -1681,6 +1705,7 @@ function rdMenu(){
     en('btnBarracks',canAfford(BUILD_DEFS.barracks.cost));show('btnBarracks',1);
     if(ai>=1){en('btnTower',canAfford(BUILD_DEFS.tower.cost));show('btnTower',1);}
     en('btnWall',canAfford(BUILD_DEFS.wall.cost));show('btnWall',1);
+    en('btnClear',true);show('btnClear',1);
     if(ai>=1){en('btnBlacksmith',canAfford(BUILD_DEFS.blacksmith.cost));show('btnBlacksmith',1);}
     if(ai>=2){en('btnCastle',canAfford(BUILD_DEFS.castle_bldg.cost));show('btnCastle',1);}
   }else if(selectedBldg&&selectedBldg.type==='tc'){
