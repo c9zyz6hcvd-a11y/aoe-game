@@ -1301,9 +1301,11 @@ function blockedAt(x,y){
 }
 // 單位「真正目標」（tx/ty 行 path 時係途徑點，唔係終點）→ 看門狗用嚟判斷有冇接近終點
 function goalOf(v){
-  if(v.tRes&&v.tRes.res>0)return{x:v.tRes.x,y:v.tRes.y};
+  // 卸貨返主堡：終點係主堡，唔係仲 set 住嘅 tRes 樹（否則看門狗會拉佢掉返轉頭去樹 → 死循環）
+  if(v.state==='returning')return tcCenter(v.team==='enemy'?etc:tc);
+  if(v.state==='building'&&v.tBldg)return{x:v.tBldg.x+(v.tBldg.w||40)/2,y:v.tBldg.y+(v.tBldg.h||40)/2};
   if(v.tEn&&v.tEn.hp>0)return{x:v.tEn.x,y:v.tEn.y};
-  if(v.tBldg)return{x:v.tBldg.x+(v.tBldg.w||40)/2,y:v.tBldg.y+(v.tBldg.h||40)/2};
+  if(v.tRes&&v.tRes.res>0)return{x:v.tRes.x,y:v.tRes.y};
   if(v.aMove)return{x:v.aMoveX,y:v.aMoveY};
   if(v.path&&v.path.length)return v.path[v.path.length-1];
   return{x:v.tx,y:v.ty};
@@ -1351,7 +1353,14 @@ function mvUnit(v,dt){
     if(v.state==='moving'){
       if(v.tRes&&v.tRes.res>0)v.state='gathering';
       else if(v.tEn&&v.tEn.hp>0)v.state='chase';
-      else if(!v.tRes&&!v.tEn){
+      else if(v.tRes){
+        // 行到一半棵樹/資源畀人採乾咗 → 搵下一個同類資源，唔好呆企（之前會卡死喺 moving）
+        v.tRes=null;
+        const pool=v.gType==='wood'?trees:v.gType==='food'?bushes:v.gType==='gold'?goldMines:stones;
+        const nxt=pool.filter(r=>r.res>0).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y))[0];
+        if(nxt){v.tRes=nxt;const e=edgeOf(nxt,v);v.tx=e.x;v.ty=e.y;v.state='moving';}
+        else v.state='idle';}
+      else if(!v.tEn){
         // Waypoint queue: 到站就 pop 下一個途徑點
         if(v.waypoints&&v.waypoints.length>0){
           const wp=v.waypoints.shift();v.tx=wp.x;v.ty=wp.y;v.state='moving';
