@@ -2306,7 +2306,34 @@ function makeMountedGLB(u){
   g.userData.ring=ringSel(2.3);g.add(g.userData.ring);
   return g;
 }
-function makeUnitMesh(u){
+// 兵種頭頂彩色徽記（共用模型嘅兵種靠呢個分辨）：形狀＋顏色都唔同
+const _ME={};function matE(c){if(!_ME[c])_ME[c]=new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.55,roughness:.5,metalness:.1});return _ME[c];}
+const ROLE_MARK={
+  swordsman:  {c:0xff3b30,shape:'cone'},   // 紅 劍兵
+  spearman:   {c:0x3b6bff,shape:'spike'},  // 藍長尖 矛兵
+  archer:     {c:0x32d24a,shape:'cone'},   // 綠 弓兵
+  mass_archer:{c:0xb45cff,shape:'double'}, // 紫雙 連弩
+  knight:     {c:0xffd23b,shape:'cone'},   // 金 騎士
+  horseman:   {c:0xff8a30,shape:'cone'},   // 橙 騎兵
+  monk:       {c:0xffffff,shape:'ring'},   // 白光環 僧侶
+  scout:      {c:0xffe24a,shape:'feather'},// 黃羽 斥候
+  catapult:   {c:0x8a8a8a,shape:'cone'},   // 灰 投石車
+};
+function roleMark(u){
+  const def=ROLE_MARK[u.type];if(!def)return null; // 村民唔加（已經好易認）
+  const g=new THREE.Group();g.position.y=u.type==='catapult'?3.2:(u.type==='horseman'||u.type==='knight'?3.6:2.75);
+  const m=matE(def.c);
+  if(def.shape==='ring'){const t=new THREE.Mesh(new THREE.TorusGeometry(.26,.07,8,16),m);t.rotation.x=Math.PI/2;g.add(t);}
+  else if(def.shape==='spike'){const c=new THREE.Mesh(new THREE.ConeGeometry(.15,.72,6),m);g.add(c);}
+  else if(def.shape==='double'){const c1=new THREE.Mesh(new THREE.ConeGeometry(.2,.42,8),m);c1.position.x=-.16;g.add(c1);const c2=c1.clone();c2.position.x=.16;g.add(c2);}
+  else if(def.shape==='feather'){const c=new THREE.Mesh(new THREE.ConeGeometry(.1,.62,5),m);c.rotation.z=.5;g.add(c);}
+  else{const c=new THREE.Mesh(new THREE.ConeGeometry(.27,.5,4),m);g.add(c);} // 4 面菱錐
+  g.traverse(o=>{if(o.isMesh)o.castShadow=false;});
+  g.userData.roleMark=true;
+  return g;
+}
+function makeUnitMesh(u){const g=_buildUnitMesh(u);const mk=roleMark(u);if(mk)(g.userData.body||g).add(mk);return g;}
+function _buildUnitMesh(u){
   if((u.type==='horseman'||u.type==='knight')&&horseLib&&charLib.swordsman)return makeMountedGLB(u);
   if(charLib[u.type])return makeGLBUnit(u);
   const en=u.team==='enemy';
