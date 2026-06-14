@@ -520,19 +520,11 @@ function startBuild(type){
   const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
   if(!vls.length){showStatus('選取村民');return;}
   if(!canAfford(def.cost)){showStatus('資源不足');return;}
-  // 城牆：進入放置模式（click地圖揀位）
-  if(type==='wall'){placingType='wall';showStatus('🧱 點擊地圖放置城牆 (左鍵放/Esc取消)');playClick();return;}
-  const ax=vls.reduce((s,v)=>s+v.x,0)/vls.length,ay=vls.reduce((s,v)=>s+v.y,0)/vls.length;
-  const sp=findSpot(ax,ay,def.w,def.h,type);if(!sp){showStatus('找不到空地');return;}
-  spend(def.cost);
-  const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type,hp:1,maxHp:def.hp||200,name:def.name,
-    p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'player',
-    atk:def.atk||0,rng:def.rng||0,cd:def.cd||0,at:0};
-  buildings.push(b);stats.built++;
-  vls.forEach((v,i)=>{const r=Math.floor(i/2),c=i%2;
-    v.state='building';v.tRes=null;v.gType=null;v.tEn=null;
-    v.tx=sp.x+10+c*30;v.ty=sp.y-15-r*28;v.tBldg=b;v.path=null;});
-  playClick();showStatus('建造'+def.name);
+  // 全部建築都入「放置模式」：自己 click 地圖揀位（城牆連續放，其他放一個就出）
+  placingType=type;
+  if(type==='wall')showStatus('🧱 點擊地圖放置城牆 (左鍵連續放 / Esc 取消)');
+  else showStatus('📍 點地放置'+def.name+' (綠=可放 紅=唔得 / Esc 取消)');
+  playClick();
 }
 function startClear(){
   if(isSpectator())return;
@@ -578,12 +570,15 @@ function placeBuilding(wpos){
   }else{
     const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
     if(!vls.length){showStatus('冇選取村民');placingType=null;return;}
-    sp=findSpot(wpos.x,wpos.y,def.w,def.h,placingType);
-    if(!sp){showStatus('位置已被佔用');return;}
+    // 以 cursor 為中心擺；該位唔得就唔放（對應紅 ghost），唔好亂偏移
+    const cx=wpos.x-def.w/2, cy=wpos.y-def.h/2;
+    if(!canPlace(cx,cy,def.w,def.h,placingType)){showStatus('呢度放唔到（綠色先得）');return;}
+    sp={x:cx,y:cy};
   }
   spend(def.cost);
   const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type:placingType,hp:1,maxHp:def.hp||200,name:def.name,
-    p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'player',autoBuild:isWall};
+    p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'player',autoBuild:isWall,
+    atk:def.atk||0,rng:def.rng||0,cd:def.cd||0,at:0};
   if(isWall)applyWallTier(b,currentAge); // 城牆按目前時代定等級（木/石/堡壘）
   buildings.push(b);stats.built++;
   if(!isWall){
@@ -2511,6 +2506,17 @@ function drawOverlay(){
         octx.beginPath();octx.ellipse(c.x,c.y,rad,rad*.6,0,0,Math.PI*2);
         octx.fillStyle='rgba(220,180,80,.18)';octx.fill();
         octx.strokeStyle='#e0c050';octx.lineWidth=2;octx.setLineDash([6,4]);octx.stroke();octx.setLineDash([]);}
+    }else if(BUILD_DEFS[placingType]){
+      // 一般建築：cursor 做中心畫地基方框（綠=可放 / 紅=被擋）
+      const def=BUILD_DEFS[placingType];
+      const bx=wp.x-def.w/2,by=wp.y-def.h/2;
+      const ok=canPlace(bx,by,def.w,def.h,placingType);
+      const cs=[[bx,by],[bx+def.w,by],[bx+def.w,by+def.h],[bx,by+def.h]].map(([x,y])=>proj(x,y,.3));
+      if(cs.every(p=>p.vis)){
+        octx.beginPath();octx.moveTo(cs[0].x,cs[0].y);for(let i=1;i<4;i++)octx.lineTo(cs[i].x,cs[i].y);octx.closePath();
+        octx.fillStyle=ok?'rgba(80,220,120,.28)':'rgba(220,70,70,.28)';octx.fill();
+        octx.strokeStyle=ok?'#5ee07a':'#e04646';octx.lineWidth=2;octx.stroke();
+      }
     }
   }
   for(const u of units){
