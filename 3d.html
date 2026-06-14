@@ -476,7 +476,9 @@ function canPlace(x,y,bw,bh,bt){
   if(x<etc.x+etc.w+20&&x+bw>etc.x-20&&y<etc.y+etc.h+20&&y+bh>etc.y-20)return 0;
   for(const t of trees)if(t.res>0&&t.x>x-12&&t.x<x+bw+12&&t.y>y-12&&t.y<y+bh+12)return 0;
   for(const b of[...buildings]){if(!b.complete)continue;
-    const gap=(bt==='wall'||b.type==='wall')?2:15; // 牆可貼近
+    const ww=(bt==='wall'&&b.type==='wall');
+    // 牆貼牆：容許齊邊密封（負gap，只擋真正重疊嘅同一格）；牆對其他/其他對牆=2；正常=15
+    const gap=ww?-3:(bt==='wall'||b.type==='wall')?2:15;
     if(b.x<x+bw+gap&&b.x+b.w>x-gap&&b.y<y+bh+gap&&b.y+b.h>y-gap)return 0;}
   return 1;
 }
@@ -542,7 +544,7 @@ function placeBuilding(wpos){
   if(isWall){
     // 城牆：snap 落 40px grid → 相鄰城牆自動齊邊密封；該格冇位就唔放（唔好偏移，否則接唔到線）
     const gx=Math.floor(wpos.x/def.w)*def.w, gy=Math.floor(wpos.y/def.h)*def.h;
-    if(!canPlace(gx,gy,def.w,def.h)){showStatus('呢格已有嘢');return;}
+    if(!canPlace(gx,gy,def.w,def.h,'wall')){showStatus('呢格已有嘢');return;}
     sp={x:gx,y:gy};
   }else{
     const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
@@ -2391,7 +2393,7 @@ function drawOverlay(){
     const wp=sw(edgeMX,edgeMY);
     if(placingType==='wall'){
       const gx=Math.floor(wp.x/40)*40,gy=Math.floor(wp.y/40)*40;
-      const ok=canPlace(gx,gy,40,40);
+      const ok=canPlace(gx,gy,40,40,'wall');
       const cs=[[gx,gy],[gx+40,gy],[gx+40,gy+40],[gx,gy+40]].map(([x,y])=>proj(x,y,.3));
       if(cs.every(p=>p.vis)){
         octx.beginPath();octx.moveTo(cs[0].x,cs[0].y);for(let i=1;i<4;i++)octx.lineTo(cs[i].x,cs[i].y);octx.closePath();
