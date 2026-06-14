@@ -1025,59 +1025,53 @@ function updateProjs(dt){
   }
 }
 // ---- A* ----
+// 尋路格 = 40px，同城牆(40px)完美對齊 → 一道牆剛好 1 格，A* path 物理上一定行得通
+const PF=40,PFG=Math.ceil(WORLD.w/PF),PFR=Math.ceil(WORLD.h/PF);
 function blockedSet(){
   const s=new Set();
-  for(const t of trees){if(t.res<=0)continue;const gx=~~(t.x/WORLD.T),gy=~~(t.y/WORLD.T);
-    s.add(gx+','+gy);s.add((gx+1)+','+gy);s.add(gx+','+(gy+1));s.add((gx+1)+','+(gy+1));}
+  const markBox=(x0,y0,x1,y1)=>{
+    const gx0=Math.max(0,~~(x0/PF)),gx1=Math.min(PFG-1,~~(x1/PF)),
+          gy0=Math.max(0,~~(y0/PF)),gy1=Math.min(PFR-1,~~(y1/PF));
+    for(let gx=gx0;gx<=gx1;gx++)for(let gy=gy0;gy<=gy1;gy++)s.add(gx+','+gy);};
+  for(const t of trees){if(t.res<=0)continue;markBox(t.x-15,t.y-15,t.x+15,t.y+15);}
   for(const b of[tc,etc,...buildings]){if(!b.complete&&b!==tc&&b!==etc)continue;
-    const gx1=~~(b.x/WORLD.T),gy1=~~(b.y/WORLD.T),gx2=~~((b.x+(b.w||100)-1)/WORLD.T),gy2=~~((b.y+(b.h||100)-1)/WORLD.T);
-    for(let gx=gx1;gx<=gx2;gx++)for(let gy=gy1;gy<=gy2;gy++)s.add(gx+','+gy);}
-  // 城牆連線：相鄰牆之間 block 全部空隙 grid cells（Bresenham 線填充）
-  const walls=buildings.filter(b=>b.type==='wall'&&b.complete);
-  for(let i=0;i<walls.length;i++){
-    for(let j=i+1;j<walls.length;j++){
-      const a=walls[i],b=walls[j];
-      const cxA=a.x+a.w/2,cyA=a.y+a.h/2,cxB=b.x+b.w/2,cyB=b.y+b.h/2;
-      const dist=Math.hypot(cxA-cxB,cyA-cyB);
-      if(dist<100){ // 牆距 <100px（涵蓋鄰接 grid cell 80px）
-        const steps=Math.ceil(dist/WORLD.T*3); // 每 1/3 格 sample
-        for(let k=0;k<=steps;k++){
-          const t=steps?k/steps:0;
-          const px=cxA+(cxB-cxA)*t,py=cyA+(cyB-cyA)*t;
-          s.add(~~(px/WORLD.T)+','+~~(py/WORLD.T));}
-        // Block wider — 加左右偏移(WORLD.T/2+2=42px)防止繞過
-        const dx=-(cyB-cyA)/dist*42,dy=(cxB-cxA)/dist*42;
-        for(let k=0;k<=steps;k++){
-          const t=steps?k/steps:0;
-          const px=cxA+(cxB-cxA)*t+dx,py=cyA+(cyB-cyA)*t+dy;
-          s.add(~~(px/WORLD.T)+','+~~(py/WORLD.T));
-          const px2=cxA+(cxB-cxA)*t-dx,py2=cyA+(cyB-cyA)*t-dy;
-          s.add(~~(px2/WORLD.T)+','+~~(py2/WORLD.T));}}}}
-  for(const u of units){if(u.hp<=0)continue;const gx=~~(u.x/WORLD.T),gy=~~(u.y/WORLD.T);s.add(gx+','+gy);}
+    if(b.hp<=0)continue;
+    markBox(b.x,b.y,b.x+(b.w||100)-1,b.y+(b.h||100)-1);}
   return s;
 }
 function aStar(sx,sy,ex,ey){
-  if(Math.hypot(ex-sx,ey-sy)<WORLD.T*2)return null;
-  const G=Math.ceil(WORLD.w/WORLD.T),R=Math.ceil(WORLD.h/WORLD.T);
-  const bs=blockedSet();const sgx=~~(sx/WORLD.T),sgy=~~(sy/WORLD.T),egx=Math.min(G-1,Math.max(0,~~(ex/WORLD.T))),egy=Math.min(R-1,Math.max(0,~~(ey/WORLD.T)));
-  bs.delete(sgx+','+sgy);
-  if(bs.has(egx+','+egy))return null;
-  const key=(x,y)=>x+','+y;const h=(x,y)=>(Math.abs(x-egx)+Math.abs(y-egy))*1.001;
+  if(Math.hypot(ex-sx,ey-sy)<PF)return null; // 太近唔使尋路
+  const bs=blockedSet();const key=(x,y)=>x+','+y;
+  const sgx=Math.min(PFG-1,Math.max(0,~~(sx/PF))),sgy=Math.min(PFR-1,Math.max(0,~~(sy/PF)));
+  let egx=Math.min(PFG-1,Math.max(0,~~(ex/PF))),egy=Math.min(PFR-1,Math.max(0,~~(ey/PF)));
+  bs.delete(key(sgx,sgy)); // 起點解封（單位可能企喺資源/建築邊）
+  // 目的地格被佔（click 落牆邊）→ 螺旋搵最近冇被擋嘅格做終點，仍然行到去附近
+  if(bs.has(key(egx,egy))){
+    let best=null,bd=1e9;
+    for(let r=1;r<=6&&!best;r++)for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++){
+      const nx=egx+dx,ny=egy+dy;if(nx<0||ny<0||nx>=PFG||ny>=PFR)continue;
+      if(bs.has(key(nx,ny)))continue;const dd=dx*dx+dy*dy;if(dd<bd){bd=dd;best=[nx,ny];}}
+    if(!best)return null;egx=best[0];egy=best[1];
+  }
+  if(sgx===egx&&sgy===egy)return null;
+  const h=(x,y)=>(Math.abs(x-egx)+Math.abs(y-egy))*1.001;
   const open=[{f:h(sgx,sgy),g:0,x:sgx,y:sgy,px:-1,py:-1}];
   const closed=new Set(),par=new Map();
-  let iter=0;const MAX=600;
+  let iter=0;const MAX=6000;
   while(open.length&&iter++<MAX){
     let bi=0;for(let i=1;i<open.length;i++)if(open[i].f<open[bi].f)bi=i;
     const cur=open.splice(bi,1)[0];const ck=key(cur.x,cur.y);
     if(closed.has(ck))continue;closed.add(ck);par.set(ck,{x:cur.px,y:cur.py});
     if(cur.x===egx&&cur.y===egy){
       const path=[];let cx=egx,cy=egy;
-      while(!(cx===sgx&&cy===sgy)){path.unshift({x:cx*WORLD.T+WORLD.T/2,y:cy*WORLD.T+WORLD.T/2});
+      while(!(cx===sgx&&cy===sgy)){path.unshift({x:cx*PF+PF/2,y:cy*PF+PF/2});
         const pk=key(cx,cy),p=par.get(pk);if(!p)break;cx=p.x;cy=p.y;}
       return path.length>1?path:null;}
     for(const[dx,dy]of[[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,1],[1,-1],[-1,-1]]){
       const nx=cur.x+dx,ny=cur.y+dy;
-      if(nx<0||ny<0||nx>=G||ny>=R||bs.has(key(nx,ny)))continue;
+      if(nx<0||ny<0||nx>=PFG||ny>=PFR||bs.has(key(nx,ny)))continue;
+      // 禁止啃角：斜走時兩邊正交格都要通，否則會斜穿牆角
+      if(dx&&dy&&(bs.has(key(cur.x+dx,cur.y))||bs.has(key(cur.x,cur.y+dy))))continue;
       if(closed.has(key(nx,ny)))continue;
       const ng=cur.g+(dx&&dy?1.414:1),nf=ng+h(nx,ny),ei=open.findIndex(o=>o.x===nx&&o.y===ny);
       if(ei>=0){if(ng<open[ei].g){open[ei].g=ng;open[ei].f=nf;open[ei].px=cur.x;open[ei].py=cur.y;}}
@@ -2896,6 +2890,7 @@ window.__G={units,buildings,trees,bushes,stones,goldMines,sw,camT,issueCmd,selec
   setTime:t=>{gameTime=t;},
   charLib,loadGLB,SkeletonUtils,scene,mp,UNIT_DEFS,
   placeBuilding,setPlacing:t=>{placingType=t;},getPlacing:()=>placingType,
+  aStar,blockedSet,PF:()=>PF,PFG:()=>PFG,PFR:()=>PFR,
   ptick:dt=>{if(mp.ready&&(mp.role==='guest'||mp.role==='spectator'))guestTick(dt||.1);},
   setFog};
 // ---- 主迴圈 ----
