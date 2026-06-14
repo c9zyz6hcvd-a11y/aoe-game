@@ -1146,6 +1146,7 @@ canvas.addEventListener('touchend',e=>{
 },{passive:false});
 // ---- 輸入 ----
 let mouseDown=null,bxSel=0,bxR=null,dragM=0;
+let lastClickT=0,lastClickType=null; // 雙擊全選同類
 const grps={};for(let i=1;i<=9;i++)grps[i]=[];
 let lastGrpTap={};
 function findEnemyAt(wx,wy,team=MYTEAM){
@@ -1212,9 +1213,15 @@ addEventListener('mouseup',e=>{if(e.button!==0||!mouseDown)return;
       showStatus(`已選 ${ht.length}人（${ht.filter(u=>u.type==='villager').length}村民）`);}}
   else if(!dragM){const hu=units.find(u=>u.team===MYTEAM&&Math.hypot(u.x-w.x,u.y-w.y)<(u.sz||20));
     const any=selected().length>0;
-    if(hu){units.forEach(u=>u.sel=0);selectedBldg=null;hu.sel=1;
-      const nn=UNIT_DEFS[hu.type]?UNIT_DEFS[hu.type].name:'村民';
-      showStatus('選取'+nn);}
+    if(hu){units.forEach(u=>u.sel=0);selectedBldg=null;
+      const now=performance.now();
+      if(now-lastClickT<350&&lastClickType===hu.type){
+        // 雙擊同類：全選畫面上所有同兵種
+        let n=0;units.forEach(u=>{if(u.team===MYTEAM&&u.type===hu.type){const p=proj(u.x,u.y,1);
+          if(p.vis&&p.x>=0&&p.x<=W&&p.y>=0&&p.y<=H){u.sel=1;n++;}}});
+        showStatus('全選 '+n+' '+(UNIT_DEFS[hu.type]?UNIT_DEFS[hu.type].name:'村民'));
+      }else{hu.sel=1;showStatus('選取'+(UNIT_DEFS[hu.type]?UNIT_DEFS[hu.type].name:'村民'));}
+      lastClickT=now;lastClickType=hu.type;playClick();}
     else if(any){const th=w.x>=myTC.x&&w.x<=myTC.x+myTC.w&&w.y>=myTC.y&&w.y<=myTC.y+myTC.h;
       const hb=buildings.find(b=>b.complete&&b.team===MYTEAM&&w.x>=b.x&&w.x<=b.x+b.w&&w.y>=b.y&&w.y<=b.y+b.h);
       if(th){units.forEach(u=>u.sel=0);selectedBldg={type:'tc',name:'主堡'};showStatus('主堡');}
@@ -1265,8 +1272,17 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&placingType){placingType=nul
       if(grps[n].length)showStatus(`編隊 ${n}（${grps[n].length}人）`);}
   }});
 addEventListener('keyup',e=>{keys[e.key]=0;});
+let edgeMX=-1,edgeMY=-1,edgeScrollOn=(localStorage.edgeScroll??'1')==='1';
+addEventListener('mousemove',e=>{edgeMX=e.clientX;edgeMY=e.clientY;});
+addEventListener('mouseout',e=>{if(!e.relatedTarget){edgeMX=-1;edgeMY=-1;}});
 function camKeys(dt){const v=camDist*.9*dt;let mx=0,mz=0;
   if(keys.ArrowLeft)mx-=1;if(keys.ArrowRight)mx+=1;if(keys.ArrowUp)mz-=1;if(keys.ArrowDown)mz+=1;
+  // 邊緣捲動：滑鼠去到畫面邊就推鏡頭（拖框/放置時唔捲，避免打架）
+  if(edgeScrollOn&&!bxSel&&!mouseDown&&edgeMX>=0&&document.getElementById('lobby').style.display==='none'){
+    const E=10;
+    if(edgeMX<E)mx-=1;else if(edgeMX>W-E)mx+=1;
+    if(edgeMY<E)mz-=1;else if(edgeMY>H-E)mz+=1;
+  }
   if(mx||mz){camT.x+=mx*v;camT.z+=mz*v;clampCam();updateCamera();}}
 // ================= 更新邏輯 =================
 // 單位中心點唔可以入任何完成建築嘅 rect（margin 令相鄰城牆 rect 重疊 → 封死縫隙）
@@ -2370,6 +2386,26 @@ function syncScene(dt,now){
 // ---- Overlay ----
 function drawOverlay(){
   octx.clearRect(0,0,W,H);
+  // 放置預覽 ghost：城牆顯示綠/紅格、清地顯示半徑圈
+  if(placingType&&edgeMX>=0&&edgeMY>=0){
+    const wp=sw(edgeMX,edgeMY);
+    if(placingType==='wall'){
+      const gx=Math.floor(wp.x/40)*40,gy=Math.floor(wp.y/40)*40;
+      const ok=canPlace(gx,gy,40,40);
+      const cs=[[gx,gy],[gx+40,gy],[gx+40,gy+40],[gx,gy+40]].map(([x,y])=>proj(x,y,.3));
+      if(cs.every(p=>p.vis)){
+        octx.beginPath();octx.moveTo(cs[0].x,cs[0].y);for(let i=1;i<4;i++)octx.lineTo(cs[i].x,cs[i].y);octx.closePath();
+        octx.fillStyle=ok?'rgba(80,220,120,.3)':'rgba(220,70,70,.3)';octx.fill();
+        octx.strokeStyle=ok?'#5ee07a':'#e04646';octx.lineWidth=2;octx.stroke();
+      }
+    }else if(placingType==='clear'){
+      const c=proj(wp.x,wp.y,.3);
+      if(c.vis){const r=proj(wp.x+58,wp.y,.3);const rad=Math.abs(r.x-c.x);
+        octx.beginPath();octx.ellipse(c.x,c.y,rad,rad*.6,0,0,Math.PI*2);
+        octx.fillStyle='rgba(220,180,80,.18)';octx.fill();
+        octx.strokeStyle='#e0c050';octx.lineWidth=2;octx.setLineDash([6,4]);octx.stroke();octx.setLineDash([]);}
+    }
+  }
   for(const u of units){
     if(u.hp>=u.mh)continue;
     if(u.team!==MYTEAM&&!fogVisible(u.x,u.y))continue;
