@@ -513,19 +513,34 @@ function startBuild(type){
 function placeBuilding(wpos){
   if(!placingType)return;
   const def=BUILD_DEFS[placingType];if(!def){placingType=null;return;}
-  const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
-  if(!vls.length){showStatus('冇選取村民');placingType=null;return;}
-  if(!canAfford(def.cost)){showStatus('資源不足');placingType=null;return;}
-  const sp=findSpot(wpos.x,wpos.y,def.w,def.h,placingType);
-  if(!sp){showStatus('位置已被佔用');return;}
+  if(!canAfford(def.cost)){showStatus('資源不足，退出建造');placingType=null;return;}
+  const isWall=placingType==='wall';
+  let sp;
+  if(isWall){
+    // 城牆：snap 落 40px grid → 相鄰城牆自動齊邊密封；該格冇位就唔放（唔好偏移，否則接唔到線）
+    const gx=Math.floor(wpos.x/def.w)*def.w, gy=Math.floor(wpos.y/def.h)*def.h;
+    if(!canPlace(gx,gy,def.w,def.h)){showStatus('呢格已有嘢');return;}
+    sp={x:gx,y:gy};
+  }else{
+    const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
+    if(!vls.length){showStatus('冇選取村民');placingType=null;return;}
+    sp=findSpot(wpos.x,wpos.y,def.w,def.h,placingType);
+    if(!sp){showStatus('位置已被佔用');return;}
+  }
   spend(def.cost);
   const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type:placingType,hp:1,maxHp:def.hp||200,name:def.name,
-    p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'player'};
+    p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'player',autoBuild:isWall};
   buildings.push(b);stats.built++;
-  vls.forEach((v,i)=>{const r=Math.floor(i/2),c=i%2;
-    v.state='building';v.tRes=null;v.gType=null;v.tEn=null;
-    v.tx=sp.x+10+c*30;v.ty=sp.y-15-r*28;v.tBldg=b;v.path=null;});
-  placingType=null;playClick();spawnFx(sp.x+def.w/2,sp.y+def.h/2,'#ffd250',10);showStatus('🧱 城牆建造中');}
+  if(!isWall){
+    const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
+    vls.forEach((v,i)=>{const r=Math.floor(i/2),c=i%2;
+      v.state='building';v.tRes=null;v.gType=null;v.tEn=null;
+      v.tx=sp.x+10+c*30;v.ty=sp.y-15-r*28;v.tBldg=b;v.path=null;});
+  }
+  playClick();spawnFx(sp.x+def.w/2,sp.y+def.h/2,'#ffd250',8);
+  // 城牆：留喺放置模式，連續點地起多幾段；Esc 退出
+  if(isWall)showStatus('🧱 城牆 ('+wood+'🪵 起多段 / Esc 完成)');
+  else{placingType=null;showStatus('🏗️ 建造中');}}
 // ---- 時代升級 ----
 function ageIdx(key){return AGES[key].idx;}
 function canAdvanceAge(){
@@ -1573,6 +1588,10 @@ function update(dt){
     if(units[i].mesh)scene.remove(units[i].mesh);
     units.splice(i,1);upPop();}}
   for(const v of units){if(v.state==='building'&&v.tBldg&&v.tBldg.complete){v.state='idle';v.tBldg=null;}}
+  // 城牆自動起好（唔使村民企喺度），起好即刻 +人口/封路
+  for(const b of buildings){if(b.autoBuild&&!b.complete){b.p+=dt*1.4;
+    if(b.p>=b.bt){b.complete=1;b.hp=b.maxHp;b.autoBuild=false;
+      playBuildDone&&playBuildDone();spawnFx(b.x+b.w/2,b.y+b.h/2,'#ffd250',10);}}}
   units.forEach(v=>{updateVil(v,dt);updateCombat(v,dt);});
   gameTime+=dt;updateTowers(dt);if(!mp.ready)enemyAI(dt);updateAge(dt);updateProjs(dt);
   if(Math.floor((gameTime-dt)/10)<Math.floor(gameTime/10))recordTimeline();
@@ -2850,7 +2869,8 @@ window.__G={units,buildings,trees,bushes,stones,goldMines,sw,camT,issueCmd,selec
   age:()=>currentAge,tc,etc,techs,AGES,
   setAge:a=>{currentAge=a;ageBadgeEl.textContent=AGES[a].icon+AGES[a].name;},
   setTime:t=>{gameTime=t;},
-  charLib,loadGLB,SkeletonUtils,scene,mp,
+  charLib,loadGLB,SkeletonUtils,scene,mp,UNIT_DEFS,
+  placeBuilding,setPlacing:t=>{placingType=t;},getPlacing:()=>placingType,
   ptick:dt=>{if(mp.ready&&(mp.role==='guest'||mp.role==='spectator'))guestTick(dt||.1);},
   setFog};
 // ---- 主迴圈 ----
