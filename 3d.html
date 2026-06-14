@@ -24,10 +24,10 @@
   #mobileBar button{background:rgba(0,0,0,.65);border:2px solid #888;color:#fff;
     font-size:20px;width:52px;height:52px;border-radius:12px;cursor:pointer;backdrop-filter:blur(4px);}
   #mobileBar button:active{background:rgba(255,210,80,.3);border-color:#ffd250;}
-  #topbar{position:fixed;top:0;left:0;right:0;height:36px;background:rgba(0,0,0,.75);
+  #topbar{position:fixed;top:0;left:0;right:0;height:40px;background:rgba(0,0,0,.78);
     display:flex;align-items:center;justify-content:center;gap:22px;
-    color:#fff;font-size:13px;font-weight:bold;pointer-events:none;border-bottom:1px solid #444;z-index:5;}
-  #hud{position:fixed;top:44px;left:8px;color:#ccc;font-size:11px;
+    color:#fff;font-size:16px;font-weight:bold;pointer-events:none;border-bottom:1px solid #444;z-index:5;}
+  #hud{position:fixed;top:80px;left:8px;color:#ccc;font-size:11px;
        background:rgba(0,0,0,.55);padding:5px 8px;border-radius:7px;line-height:1.8;pointer-events:none;z-index:5;}
   #idleBtn{position:fixed;top:44px;right:8px;color:#ffd250;font-size:12px;font-weight:bold;
     background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;
@@ -1197,14 +1197,17 @@ function issueCmd(wx,wy,list){
     u.path=aStar(u.x,u.y,wx,wy);u.pi=0;
     if(u.type!=='monk'){u.aMove=true;u.aMoveX=wx;u.aMoveY=wy;}});
   playClick();spawnFx(wx,wy,'#ffd250',6);}
+const _bmenuEl=document.getElementById('bmenu');
+function bottomDead(){return(_bmenuEl&&getComputedStyle(_bmenuEl).display!=='none')?_bmenuEl.getBoundingClientRect().height:0;}
 canvas.addEventListener('mousedown',e=>{if(e.button!==0)return;
-  if(e.clientY>innerHeight-72&&e.clientY<innerHeight)return;
+  if(e.clientY>innerHeight-bottomDead())return;
   mouseDown={sx:e.clientX,sy:e.clientY};dragM=0;bxSel=0;});
 addEventListener('mousemove',e=>{if(!mouseDown)return;
   const d=Math.abs(e.clientX-mouseDown.sx)+Math.abs(e.clientY-mouseDown.sy);
   if(d>6){dragM=1;bxSel=1;bxR={x1:mouseDown.sx,y1:mouseDown.sy,x2:e.clientX,y2:e.clientY};}});
 addEventListener('mouseup',e=>{if(e.button!==0||!mouseDown)return;
-  if(e.clientY>innerHeight-76){mouseDown=null;bxSel=0;bxR=null;dragM=0;return;}
+  const _bd=bottomDead();
+  if(_bd&&e.clientY>innerHeight-_bd){mouseDown=null;bxSel=0;bxR=null;dragM=0;return;}
   if(placingType){mouseDown=null;bxSel=0;bxR=null;dragM=0;placeBuilding(sw(e.clientX,e.clientY));return;}
   const w=sw(e.clientX,e.clientY);
   const myTC=MYTEAM==='player'?tc:etc;
