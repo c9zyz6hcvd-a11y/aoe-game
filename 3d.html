@@ -2309,18 +2309,51 @@ const TINTS={
   monk:{player:0xe8e8f0,enemy:0xc0a030,amt:.6},
   scout:{player:0xc8a870,enemy:0xc06030,amt:.5},
 };
+// 共用模型嘅兵種 → 插唔同武器／裝備落真‧手骨，整出真正唔同嘅外形（唔係淨係換色）
+function styleFootUnit(u,model,lib){
+  const k=1/lib.scale, t=u.type, en=u.team==='enemy';
+  const sR=model.getObjectByName('handslotr'), sL=model.getObjectByName('handslotl');
+  const STEEL=matM(0xd8dde2);
+  // 收起模型自帶嘅 offhand 武器（全部兵共用嗰把 → 會撞樣）
+  model.traverse(m=>{if(/Offhand|Knife/i.test(m.name||''))m.visible=false;});
+  const sword=(slot,len)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(.07*k,len*k,.024*k),STEEL);b.position.y=len*.55*k;b.castShadow=true;slot.add(b);
+    const gd=new THREE.Mesh(new THREE.BoxGeometry(.22*k,.05*k,.06*k),mat(0x8a6a30));gd.position.y=.06*k;slot.add(gd);};
+  const spear=(slot)=>{const sh=new THREE.Mesh(new THREE.CylinderGeometry(.03*k,.03*k,2.3*k,6),mat(0x6b4a2a));sh.position.y=.95*k;sh.castShadow=true;slot.add(sh);
+    const tp=new THREE.Mesh(new THREE.ConeGeometry(.07*k,.26*k,6),STEEL);tp.position.y=2.15*k;slot.add(tp);};
+  const shield=(slot,col)=>{const s=new THREE.Mesh(new THREE.CylinderGeometry(.32*k,.32*k,.07*k,16),mat(col));s.rotation.z=Math.PI/2;s.position.set(0,.04*k,.05*k);s.castShadow=true;slot.add(s);
+    const bo=new THREE.Mesh(new THREE.SphereGeometry(.07*k,8,6),STEEL);bo.position.set(.05*k,.04*k,.05*k);slot.add(bo);};
+  const bow=(slot)=>{const b=new THREE.Mesh(new THREE.TorusGeometry(.36*k,.026*k,6,14,Math.PI*1.2),mat(0x6b4a2a));b.rotation.z=Math.PI/2;b.castShadow=true;slot.add(b);
+    const st=new THREE.Mesh(new THREE.CylinderGeometry(.007*k,.007*k,.66*k,4),mat(0xeeeeee));slot.add(st);};
+  const crossbow=(slot)=>{const stock=new THREE.Mesh(new THREE.BoxGeometry(.05*k,.5*k,.06*k),mat(0x6b4a2a));stock.position.y=.18*k;stock.castShadow=true;slot.add(stock);
+    const limb=new THREE.Mesh(new THREE.BoxGeometry(.62*k,.035*k,.05*k),mat(0x333333));limb.position.y=.34*k;slot.add(limb);
+    const tip=new THREE.Mesh(new THREE.ConeGeometry(.03*k,.16*k,5),STEEL);tip.position.y=.5*k;slot.add(tip);};
+  const staff=(slot)=>{const sh=new THREE.Mesh(new THREE.CylinderGeometry(.026*k,.026*k,2.05*k,6),mat(0x7a5a36));sh.position.y=.85*k;sh.castShadow=true;slot.add(sh);
+    const orb=new THREE.Mesh(new THREE.SphereGeometry(.1*k,10,8),matE(0xffe27a));orb.position.y=1.95*k;slot.add(orb);};
+  const quiver=(col)=>{const sp=model.getObjectByName('spine')||model.getObjectByName('chest');if(!sp)return;
+    const q=new THREE.Mesh(new THREE.CylinderGeometry(.08*k,.06*k,.5*k,8),mat(col));q.position.set(.13*k,.05*k,-.16*k);q.rotation.set(-.3,0,.2);sp.add(q);
+    for(let i=0;i<3;i++){const a=new THREE.Mesh(new THREE.CylinderGeometry(.009*k,.009*k,.34*k,4),mat(0xddccaa));a.position.set(.13*k+(i-1)*.05*k,.32*k,-.16*k);a.rotation.z=.2;sp.add(a);}};
+  const robe=(col)=>{const hip=model.getObjectByName('hips');if(!hip)return;
+    const r=new THREE.Mesh(new THREE.CylinderGeometry(.2*k,.44*k,.92*k,12,1,true),mat(col));r.position.y=-.42*k;hip.add(r);};
+  if(t==='swordsman'){ if(sR)sword(sR,.82); if(sL)shield(sL,en?0x7a2828:0x24508c); }
+  else if(t==='spearman'){ if(sR)spear(sR); }
+  else if(t==='scout'){ if(sR)sword(sR,.5); } // 短刀＋細隻（scale 喺 makeGLBUnit）
+  else if(t==='archer'){ if(sL)bow(sL); quiver(en?0x6e3a22:0x2c5e3a); }
+  else if(t==='mass_archer'){ if(sR)crossbow(sR); quiver(0x5a3a9a); }
+  else if(t==='monk'){ if(sR)staff(sR); robe(en?0x9a7a30:0xe8e8f0); }
+}
 function makeGLBUnit(u){
   const en=u.team==='enemy';
   const g=new THREE.Group();
   const body=new THREE.Group();g.add(body);g.userData.body=body;
   const lib=charLib[u.type];
   const c=SkeletonUtils.clone(lib.scene);
-  c.scale.setScalar(lib.scale*(u.type==='spearman'?.92:1));
+  c.scale.setScalar(lib.scale*(u.type==='spearman'?.92:u.type==='scout'?.86:1));
   const tintDef=TINTS[u.type]||TINTS.villager;
   const tint=en?tintDef.enemy:tintDef.player;
   c.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
     if(tint){m.material=m.material.clone();if(m.material.color)m.material.color.lerp(new THREE.Color(tint),tintDef.amt);}}});
   body.add(c);
+  if(u.type!=='villager')styleFootUnit(u,c,lib); // 村民保留 Barbarian 原裝（已易認）
   u.mixer=new THREE.AnimationMixer(c);
   const cl=lib.clips;
   u.actions={
@@ -2376,6 +2409,8 @@ function makeMountedGLB(u){
     ull:r.getObjectByName('upperlegl'),ulr:r.getObjectByName('upperlegr'),
     lll:r.getObjectByName('lowerlegl'),llr:r.getObjectByName('lowerlegr'),
     ftl:r.getObjectByName('footl'),ftr:r.getObjectByName('footr')};
+  // 收起模型自帶嘅 offhand 武器（騎士／騎兵共用嗰把 → 撞樣）
+  r.traverse(m=>{if(/Offhand|Knife/i.test(m.name||''))m.visible=false;});
   // 武器插喺手 slot
   const slot=r.getObjectByName('handslotr');
   if(slot){const k=1/lib.scale;
@@ -2384,11 +2419,17 @@ function makeMountedGLB(u){
       blade.position.y=.5*k;blade.castShadow=true;slot.add(blade);
       const guard=new THREE.Mesh(new THREE.BoxGeometry(.24*k,.05*k,.06*k),mat(0x8a6a30));
       guard.position.y=.08*k;slot.add(guard);
+      // 騎士加圓盾（左手）→ 同騎兵（長矛）明顯唔同
+      const sL=r.getObjectByName('handslotl');
+      if(sL){const sh=new THREE.Mesh(new THREE.CylinderGeometry(.34*k,.34*k,.08*k,16),mat(en?0x7a2828:0xc8a030));sh.rotation.z=Math.PI/2;sh.position.set(0,.05*k,.05*k);sh.castShadow=true;sL.add(sh);
+        const bo=new THREE.Mesh(new THREE.SphereGeometry(.08*k,8,6),matM(0xcfcfd6));bo.position.set(.06*k,.05*k,.05*k);sL.add(bo);}
     }else{
-      const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.032*k,.032*k,2.2*k,6),mat(0x8a6a40));
-      shaft.castShadow=true;slot.add(shaft);
-      const tip=new THREE.Mesh(new THREE.ConeGeometry(.06*k,.22*k,6),matM(0xc8ccd2));
-      tip.position.y=1.15*k;slot.add(tip);
+      const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.032*k,.032*k,2.6*k,6),mat(0x8a6a40));
+      shaft.position.y=.3*k;shaft.castShadow=true;slot.add(shaft);
+      const tip=new THREE.Mesh(new THREE.ConeGeometry(.07*k,.3*k,6),matM(0xc8ccd2));
+      tip.position.y=1.75*k;slot.add(tip);
+      // 騎兵長矛尾旗
+      const flag=new THREE.Mesh(new THREE.BoxGeometry(.01*k,.18*k,.28*k),mat(en?0xc03030:0x3070d0));flag.position.set(0,1.4*k,.14*k);slot.add(flag);
     }}
   g.userData.mounted=1;
   g.userData.ring=ringSel(2.3);g.add(g.userData.ring);
