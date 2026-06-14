@@ -449,9 +449,14 @@ function garrisonUnit(b){
   if(!b||!b.id)return;const cap=GARRISON_CAP[b.type]||0;if(!cap)return;
   let g=garrisonMap.get(b.id);if(!g){g=[];garrisonMap.set(b.id,g);}
   if(g.length>=cap){showStatus('駐軍已滿');return;}
-  const nearby=units.filter(u=>u.team===b.team&&u.hp>0&&u.state==='idle'&&
-    Math.hypot(u.x-(b.x+b.w/2),u.y-(b.y+b.h/2))<80).slice(0,cap-g.length);
-  if(!nearby.length){showStatus('附近沒有可駐軍單位');return;}
+  const cx=b.x+b.w/2,cy=b.y+b.h/2;
+  // 優先攞「已選取」嘅單位（揀好弓兵再撳駐軍，唔使佢 idle）；否則攞附近 idle 士兵
+  let nearby=units.filter(u=>u.team===b.team&&u.hp>0&&u.sel&&Math.hypot(u.x-cx,u.y-cy)<170);
+  if(!nearby.length)nearby=units.filter(u=>u.team===b.team&&u.hp>0&&u.type!=='villager'&&u.state==='idle'&&Math.hypot(u.x-cx,u.y-cy)<120);
+  nearby=nearby.slice(0,cap-g.length);
+  if(!nearby.length){
+    const selFar=units.some(u=>u.team===b.team&&u.sel&&u.hp>0);
+    showStatus(selFar?'選取嘅單位要行近箭塔先 (≤170)':'先選士兵（框住）再撳駐軍');return;}
   nearby.forEach(u=>{
     g.push({type:u.type,hp:u.hp,mh:u.mh,atk:u.atk,sp:u.sp,rng:u.rng,sz:u.sz,hat:u.hat,dir:u.dir,team:u.team});
     if(u.mesh){scene.remove(u.mesh);u.mesh=null;u.mixer=null;u.actions=null;}
@@ -516,7 +521,7 @@ function startBuild(type){
 function startClear(){
   if(isSpectator())return;
   placingType='clear';
-  showStatus('🧹 點地清除附近樹/石/果叢/金礦 (連續清 / Esc 完成)');playClick();
+  showStatus('🧹 點地清除附近樹/石/果叢/金礦/自己城牆 (連續清 / Esc 完成)');playClick();
 }
 function clearAround(wpos){
   const R=58; // 清除半徑
@@ -531,7 +536,15 @@ function clearAround(wpos){
         spawnFx(o.x,o.y,o.type==='wood'?'#8a6a30':o.type==='food'?'#c04050':o.type==='gold'?'#f4d03f':'#999',8);
       }}
   }
-  if(removed){playChop();showStatus('🧹 清咗 '+removed+' 個障礙');}
+  // 同一個掣：連自己嘅城牆都拆走（方便整理牆線，唔使另開掣）
+  for(let i=buildings.length-1;i>=0;i--){const b=buildings[i];
+    if(b.type==='wall'&&b.team==='player'&&Math.hypot(b.x+b.w/2-wpos.x,b.y+b.h/2-wpos.y)<=R+12){
+      if(b.mesh)scene.remove(b.mesh);
+      for(const u of units)if(u.tEn===b){u.tEn=null;u.state='idle';} // 有單位打緊呢道牆 → 解除
+      buildings.splice(i,1);removed++;
+      spawnFx(b.x+b.w/2,b.y+b.h/2,'#a8a8a8',8);
+    }}
+  if(removed){playChop();showStatus('🧹 清咗 '+removed+' 個');}
   else showStatus('附近冇嘢清');
 }
 function placeBuilding(wpos){
@@ -1018,6 +1031,7 @@ function updateProjs(dt){
         spawnFx(p.tx,p.ty,'#ff8020',14);play(180,60,.25,.4,'sawtooth');
         for(const t2 of[...units,tc,etc,...buildings]){
           if(!t2)continue;
+          if(t2.type==='wall')continue; // 拋物線越過城牆打入面，唔損城牆（城牆只可俾非拋物線單位拆）
           const tx2=t2.w?(t2.x+t2.w/2):t2.x,ty2=t2.h?(t2.y+t2.h/2):t2.y;
           if(Math.hypot(tx2-p.tx,ty2-p.ty)>p.splash)continue;
           dealDamage(t2,t2.w?p.dmg*3:p.dmg,p.team);}
@@ -1157,6 +1171,9 @@ function findEnemyAt(wx,wy,team=MYTEAM){
   if(u)return u;
   const ftc=team==='player'?etc:tc;
   if(ftc.hp>0&&wx>=ftc.x-10&&wx<=ftc.x+ftc.w+10&&wy>=ftc.y-10&&wy<=ftc.y+ftc.h+10)return ftc;
+  // 敵方建築（含城牆）→ 可手動下令攻擊／拆牆
+  const eb=buildings.find(b=>b.team===foe&&b.complete&&b.hp>0&&wx>=b.x-6&&wx<=b.x+b.w+6&&wy>=b.y-6&&wy<=b.y+b.h+6);
+  if(eb)return eb;
   return null;
 }
 function edgeOf(t,v){const d=Math.hypot(t.x-v.x,t.y-v.y)||.001;return{x:t.x+(v.x-t.x)/d*(t.r+18),y:t.y+(v.y-t.y)/d*(t.r+18)};}
@@ -1315,6 +1332,26 @@ function repathTo(v,g){
   if(p&&p.length){v.path=p;v.pi=0;v.tx=p[0].x;v.ty=p[0].y;return true;}
   return false;
 }
+// 城牆擋箭：線段 (x0,y0)->(x1,y1) 有冇穿過任何完成城牆（兩隊都擋；ignore=唔計呢道牆，攻牆本身嗰陣用）
+function segHitsWall(x0,y0,x1,y1,ignore){
+  const d=Math.hypot(x1-x0,y1-y0),n=Math.max(2,Math.ceil(d/14));
+  for(const b of buildings){
+    if(b.type!=='wall'||!b.complete||b.hp<=0||b===ignore)continue;
+    for(let i=0;i<=n;i++){const t=i/n,x=x0+(x1-x0)*t,y=y0+(y1-y0)*t;
+      if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return true;}
+  }
+  return false;
+}
+// 線段上最近嘅「敵方」城牆（拆牆破關用）
+function enemyWallOnSeg(x0,y0,x1,y1,team){
+  let best=null,bd=1e9;const d=Math.hypot(x1-x0,y1-y0),n=Math.max(2,Math.ceil(d/14));
+  for(const b of buildings){
+    if(b.type!=='wall'||!b.complete||b.hp<=0||b.team===team)continue;
+    for(let i=0;i<=n;i++){const t=i/n,x=x0+(x1-x0)*t,y=y0+(y1-y0)*t;
+      if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h){const dd=(x-x0)**2+(y-y0)**2;if(dd<bd){bd=dd;best=b;}break;}}
+  }
+  return best;
+}
 function mvUnit(v,dt){
   stepCooldown=Math.max(0,stepCooldown-dt);
   const dx=v.tx-v.x,dy=v.ty-v.y,d=Math.hypot(dx,dy);
@@ -1445,10 +1482,23 @@ function updateCombat(v,dt){
   }
   if((v.state==='chase'||v.state==='attack')&&v.tEn&&v.type!=='monk'){
     const e=v.tEn;
-    if(e.hp!==undefined&&e.hp<=0){v.state='idle';v.tEn=null;return;}
+    if(e.hp!==undefined&&e.hp<=0){v.state='idle';v.tEn=null;v.engStuck=0;return;}
     const ex=e.w?(e.x+e.w/2):e.x, ey=e.h?(e.y+e.h/2):e.y;
     const dd=Math.hypot(ex-v.x,ey-v.y);
-    if(dd<=v.rng+20){v.state='attack';v.tx=v.x;v.ty=v.y;
+    const tgtIsUnit=(e.w===undefined); // 建築有 w，單位冇
+    const inRange=dd<=v.rng+20;
+    // 城牆擋箭：地面弓兵射唔穿牆（投石車拋物線 / 箭塔升高 唔受限）；攻緊嗰道牆唔計自己
+    const losClear=v.type==='catapult'||v.rng<100||!segHitsWall(v.x,v.y,ex,ey,e.type==='wall'?e:null);
+    // 想打單位但打唔到（近戰畀牆圍死 / 弓兵射唔穿）→ 若繞極都接近唔到目標（即係真‧圍死，
+    // 唔係短牆可繞）→ 拆擋路嘅敵牆。用「對目標距離冇改善」判斷，移動看門狗繞到就會接近 → 唔會誤拆。
+    if(v.type!=='catapult'&&tgtIsUnit&&!(inRange&&losClear)){
+      if(v.engBest===undefined||dd<v.engBest-4){v.engBest=dd;v.engStuck=0;}
+      else v.engStuck=(v.engStuck||0)+dt;
+      if(v.engStuck>1.5){v.engStuck=0;v.engBest=dd;
+        const w=enemyWallOnSeg(v.x,v.y,ex,ey,v.team);if(w)v.tEn=w;
+      }
+    }else{v.engStuck=0;v.engBest=undefined;}
+    if(inRange&&losClear){v.state='attack';v.tx=v.x;v.ty=v.y;
       v.dir=Math.atan2(ex-v.x,ey-v.y);
       v.at-=dt;
       if(v.at<=0){v.at=v.cd;
