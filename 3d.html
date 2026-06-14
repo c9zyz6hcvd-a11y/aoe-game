@@ -442,6 +442,22 @@ const UNIT_DEFS={
   monk:      {name:'僧侶',  sp:100,hp:45, atk:0, rng:120,cd:2.5,cost:{food:30,gold:100},           sz:18, ageReq:'castle',  heal:8},
   scout:     {name:'斥候',  sp:250,hp:35, atk:4, rng:24, cd:1.3,cost:{food:30},                    sz:20, ageReq:'dark',    vision:280},
 };
+// 城牆等級（隨時代升級）：1 木 / 2 石 / 3 堡壘。越升越高越硬、外觀變。
+const WALL_TIERS={
+  1:{name:'木城牆',  hp:300, col:0x9a6b3f, cap:0x744f2c, h:3.0},
+  2:{name:'石城牆',  hp:650, col:0x9a9a9a, cap:0x787878, h:4.2},
+  3:{name:'堡壘城牆',hp:1100,col:0x6e7a88, cap:0x515b66, h:5.4},
+};
+function wallTierForAge(ageKey){const i=AGES[ageKey].idx;return i>=3?3:i>=2?2:1;} // dark/feudal=木, castle=石, imperial=堡壘
+function applyWallTier(b,ageKey){const ti=WALL_TIERS[wallTierForAge(ageKey)];b.tier=wallTierForAge(ageKey);b.maxHp=ti.hp;b.name=ti.name;}
+// 升時代 → 升級該隊現有城牆（外觀＋血量按等級重設，保留現有血量比例）
+function upgradeWalls(team,ageKey){const newTier=wallTierForAge(ageKey);
+  for(const b of buildings){if(b.type!=='wall'||b.team!==team)continue;
+    if((b.tier||1)>=newTier)continue;
+    const ratio=b.maxHp>0?b.hp/b.maxHp:1;const ti=WALL_TIERS[newTier];
+    b.tier=newTier;b.maxHp=ti.hp;b.name=ti.name;b.hp=Math.max(1,Math.round(ti.hp*ratio));
+    if(b.mesh){scene.remove(b.mesh);b.mesh=makeBuildingMesh(b);place(b.mesh,b.x+b.w/2,b.y+b.h/2);scene.add(b.mesh);}
+  }}
 const buildings=[];let selectedBldg=null;
 const garrisonMap=new Map(); // building id → [{unit data}]
 const GARRISON_CAP={tc:10,tower:5,castle_bldg:15}; // 駐軍上限
@@ -568,6 +584,7 @@ function placeBuilding(wpos){
   spend(def.cost);
   const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type:placingType,hp:1,maxHp:def.hp||200,name:def.name,
     p:0,bt:def.bt,complete:false,pb:def.pb||0,team:'player',autoBuild:isWall};
+  if(isWall)applyWallTier(b,currentAge); // 城牆按目前時代定等級（木/石/堡壘）
   buildings.push(b);stats.built++;
   if(!isWall){
     const vls=units.filter(u=>u.sel&&u.type==='villager'&&u.team==='player');
@@ -614,12 +631,13 @@ function updateAge(dt){
       currentAge=AGES[currentAge].next;
       const a=AGES[currentAge];
       ageBadgeEl.textContent=a.icon+a.name;
-      showStatus('🎉 進入'+a.name+'！');playAgeUp();playDrop();
+      upgradeWalls('player',currentAge); // 城牆升級（木→石→堡壘）
+      showStatus('🎉 進入'+a.name+'！城牆已升級');playAgeUp();playDrop();
       spawnFx(tc.x+tc.w/2,tc.y+tc.h/2,'#ffd250',24);}}
   // 敵方時代升級（主機側處理，獨立於玩家）
   if(eAgeUpgrading){
     const ert=AGES[eCurrentAge].resTime;eAgeTimer+=dt;
-    if(eAgeTimer>=ert){eAgeUpgrading=false;eAgeTimer=0;eCurrentAge=AGES[eCurrentAge].next;}}}
+    if(eAgeTimer>=ert){eAgeUpgrading=false;eAgeTimer=0;eCurrentAge=AGES[eCurrentAge].next;upgradeWalls('enemy',eCurrentAge);}}}
 function trainVillager(){
   if(isSpectator())return;
   if(!canAfford({food:50})){showStatus('食物不足');return;}
@@ -1590,6 +1608,7 @@ function enemyAI(dt){
     const sp=findSpot(etc.x-50+Math.random()*100,etc.y-60-Math.random()*80,def.w,def.h,type);
     if(!sp)return;eWood-=(def.cost.wood||0);eFood-=(def.cost.food||0);eStone-=(def.cost.stone||0);eGold-=(def.cost.gold||0);
     const b={id:uid++,x:sp.x,y:sp.y,w:def.w,h:def.h,type,hp:1,maxHp:def.hp||200,name:def.name,p:0,bt:def.bt,complete:0,pb:def.pb||0,team:'enemy'};
+    if(type==='wall')applyWallTier(b,eCurrentAge);
     buildings.push(b);const curVils=eUnits.filter(u=>u.type==='villager'&&u.state==='idle');
     curVils.sort((a,b)=>Math.hypot(a.x-sp.x,a.y-sp.y)-Math.hypot(b.x-sp.x,b.y-sp.y)).slice(0,2).forEach((v,i)=>{v.state='building';v.tRes=null;v.tBldg=b;v.tx=b.x+20+i*30;v.ty=b.y-10;v.path=null;});
     builtThisTick=1;};
@@ -2046,8 +2065,13 @@ function makeBuildingMesh(b){
     for(let i=0;i<6;i++){const a=i/6*Math.PI*2;
       const cr=box(.6,.8,.6,0x777777);cr.position.set(Math.cos(a)*2.2,8.2,Math.sin(a)*2.2);g.add(cr);}
   }else if(b.type==='wall'){
-    const w=box(4,3.4,4,0xa8a8a8);w.position.y=1.7;g.add(w);
-    const cap=box(4.4,.5,4.4,0x8f8f8f);cap.position.y=3.6;g.add(cap);
+    const ti=WALL_TIERS[b.tier||1];
+    const w=box(4,ti.h,4,ti.col);w.position.y=ti.h/2;g.add(w);
+    const cap=box(4.4,.5,4.4,ti.cap);cap.position.y=ti.h+.25;g.add(cap);
+    if((b.tier||1)>=3){ // 堡壘城牆：加城垛
+      for(const sx of[-1.4,1.4])for(const sz of[-1.4,1.4]){
+        const cr=box(1,.7,1,ti.cap);cr.position.set(sx,ti.h+.6,sz);g.add(cr);}
+    }
   }
   g.traverse(m=>{if(m.isMesh)m.castShadow=true;});
   return g;
