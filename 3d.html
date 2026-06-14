@@ -109,6 +109,18 @@
   background:rgba(0,0,0,.55);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #5090c0;">🎵 音樂</div>
 <div id="mpBtn" onclick="openLobby()" style="position:fixed;top:80px;right:8px;color:#80d0ff;font-size:12px;font-weight:bold;
   background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #4090d0;">🌐 對戰</div>
+<div id="codexBtn" onclick="openCodex()" style="position:fixed;top:116px;right:8px;color:#ffd27a;font-size:12px;font-weight:bold;
+  background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #c0902f;">📖 圖鑑</div>
+<div id="codex" style="display:none;position:fixed;inset:0;background:rgba(8,10,14,.94);z-index:350;overflow-y:auto;color:#eee;">
+  <div style="max-width:1000px;margin:0 auto;padding:18px 16px 60px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="font-size:22px;font-weight:bold;color:#ffd27a;">📖 帝國圖鑑</div>
+      <div onclick="closeCodex()" style="cursor:pointer;font-size:14px;background:#444;padding:6px 16px;border-radius:8px;">✕ 關閉 (Esc)</div>
+    </div>
+    <div id="codexTabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;"></div>
+    <div id="codexBody"></div>
+  </div>
+</div>
 <div id="lobby" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;overflow-y:auto;
   flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;">
   <div style="font-size:44px;">🌐</div>
@@ -1279,7 +1291,8 @@ document.getElementById('minimap').addEventListener('click',e=>{const r=mc.getBo
   clampCam();updateCamera();});
 // ---- 鍵盤 ----
 const keys={};
-addEventListener('keydown',e=>{if(e.key==='Escape'&&placingType){placingType=null;showStatus('已取消');playClick();return;}keys[e.key]=1;
+addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('codex').style.display==='block'){closeCodex();return;}
+  if(e.key==='Escape'&&placingType){placingType=null;showStatus('已取消');playClick();return;}keys[e.key]=1;
   if(e.key==='a'||e.key==='A'){selectedBldg=null;units.forEach(u=>{if(u.team===MYTEAM&&u.type==='villager')u.sel=1;});
     showStatus(`全選 ${units.filter(u=>u.team===MYTEAM&&u.type==='villager').length}村民`);}
   if(e.key==='b'||e.key==='B'){const v=units.filter(u=>u.team===MYTEAM&&u.type==='villager'&&u.sel);
@@ -1899,6 +1912,81 @@ function rdMenu(){
 }
 // 單位資訊面板
 const UNIT_ICONS={villager:'👨‍🌾',swordsman:'⚔️',spearman:'🗡️',archer:'🏹',horseman:'🐴',knight:'🛡️',mass_archer:'🏹',catapult:'🪨',monk:'🙏',scout:'🔭'};
+// ===== 📖 圖鑑（自動由 UNIT_DEFS/BUILD_DEFS/techs/AGES 生成，加新嘢自動出現）=====
+const BLDG_ICONS={house:'🏠',mill:'🌾',barracks:'⚔️',tower:'🗼',wall:'🧱',blacksmith:'⚒️',castle_bldg:'🏰'};
+const RES_CODEX=[
+  {icon:'🪵',name:'木材',c:0x9a6b3f,desc:'砍樹得。起屋、城牆、兵營同大部分兵都要，最常用嘅資源。'},
+  {icon:'🍓',name:'食物',c:0xc04050,desc:'果叢採集／打獵得。生村民同兵、升時代全靠佢。'},
+  {icon:'🪨',name:'石頭',c:0x9a9a9a,desc:'採石得。城牆、箭塔、城堡呢啲防禦建築要用。'},
+  {icon:'💰',name:'黃金',c:0xf4d03f,desc:'採金礦得。精英兵（騎士／連弩／僧侶）同高級科技要用。'},
+];
+const CODEX_DESC={
+  villager:'採集木／食／石／金、起建築。經濟核心，冇佢就乜都做唔到。',
+  swordsman:'平衡近戰兵，血厚有盾，做前線肉盾。',
+  spearman:'反騎兵專家，對騎兵／騎士／投石車有額外傷害。',
+  archer:'遠程射手，射程遠但脆。怕近身，亦射唔穿城牆。',
+  horseman:'高速騎兵，繞後突襲敵方村民／弓兵。',
+  knight:'重裝騎士，血厚攻高，城堡時代主力。',
+  mass_archer:'連弩兵，射速快射程遠，弓兵嘅強化版。',
+  catapult:'攻城投石，範圍傷害，可越過城牆攻擊、對建築 3 倍傷（但唔毀牆）。',
+  monk:'治療友軍（8hp/秒），唔會主動攻擊。',
+  scout:'超高速偵察兵，大視野揭開地圖。',
+  house:'+5 人口上限。要夠人口先生到更多兵。',
+  mill:'升封建時代嘅必需建築；起好後全村民採集快 10%。',
+  barracks:'生產步兵（劍兵／矛兵／弓兵…）。',
+  tower:'防禦箭塔，升高射箭、可駐軍加攻擊，可以擺入城牆線做牆塔。',
+  wall:'阻擋敵人；箭射唔穿，只有投石可越過。隨時代由木→石→堡壘升級。',
+  blacksmith:'研究武器／護甲科技；升城堡時代嘅必需建築。',
+  castle_bldg:'終極堡壘：超遠射程、可生兵、駐軍上限 15。',
+  lumber:'伐木效率↑（村民採集更快）。',military:'軍事訓練（士兵更強）。',speed:'行軍速度↑。',heal:'急救術（單位回血）。',
+  iron:'鐵器鍛造（近戰攻擊↑）。',shield:'強化盔甲（防禦↑）。',range:'長弓術（弓兵射程↑）。',
+  fortwall:'城牆強化（城牆血量+50%）。',horsespd:'快馬（騎兵速度↑）。',goldmine:'採金術（採金快 20%）。',
+};
+const AGE_DESC={dark:'起始時代。基礎經濟同基本兵。',feudal:'解鎖箭塔、騎兵、投石車、鍛造廠。需先有磨坊。',
+  castle:'解鎖城堡、騎士、連弩、僧侶。需先有鍛造廠。',imperial:'最終時代，城牆升做堡壘，全科技開放。'};
+const _RICON={wood:'🪵',food:'🍓',stone:'🪨',gold:'💰'};
+function _costStr(cost){if(!cost)return '';return Object.entries(cost).map(([k,v])=>(_RICON[k]||k)+v).join(' ');}
+function _ageBadge(ageReq){const a=ageReq&&AGES[ageReq];return a?`<span style="background:rgba(80,60,10,.85);color:#ffd27a;border-radius:8px;padding:1px 7px;font-size:10px;white-space:nowrap;">${a.icon}${a.name}</span>`:'';}
+function _cxCard(icon,col,name,badge,stats,desc){
+  const bg=col!=null?'#'+col.toString(16).padStart(6,'0'):'#3a3a44';
+  return `<div style="background:rgba(255,255,255,.04);border:1px solid #333;border-radius:12px;padding:11px;display:flex;gap:11px;align-items:flex-start;">
+    <div style="flex:0 0 58px;height:58px;border-radius:10px;background:${bg}2e;border:2px solid ${bg};display:flex;align-items:center;justify-content:center;font-size:32px;">${icon}</div>
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><b style="font-size:15px;color:#fff;">${name}</b>${badge}</div>
+      ${stats?`<div style="font-size:11px;color:#ffd27a;margin:3px 0;">${stats}</div>`:''}
+      <div style="font-size:12px;color:#bbb;line-height:1.5;">${desc||''}</div>
+    </div></div>`;
+}
+let codexCat='all';
+function _cxSection(t){return `<div style="font-size:14px;color:#9fd0ff;margin:18px 0 6px;border-bottom:1px solid #2a3a4a;padding-bottom:4px;">${t}</div>`;}
+function _cxEra(era){return `<div style="font-size:12px;color:#888;margin:10px 0 4px;">${AGES[era].icon} ${AGES[era].name}</div>`;}
+function _cxGrid(cards){return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:9px;">${cards.join('')}</div>`;}
+function buildCodex(){
+  const eras=['dark','feudal','castle','imperial'];let html='';
+  if(codexCat==='all'||codexCat==='unit'){html+=_cxSection('⚔️ 單位');
+    for(const era of eras){const us=Object.entries(UNIT_DEFS).filter(([k,d])=>(d.ageReq||'dark')===era);if(!us.length)continue;
+      html+=_cxEra(era)+_cxGrid(us.map(([k,d])=>{const col=ROLE_MARK[k]?ROLE_MARK[k].c:null;
+        const stats=`❤️${d.hp} ⚔️${d.atk} 🎯${d.rng}${d.heal?' 🏥'+d.heal:''}${d.vision?' 👁️'+d.vision:''}${d.splash?' 💥'+d.splash:''} ｜ ${_costStr(d.cost)}`;
+        return _cxCard(UNIT_ICONS[k]||'❓',col,d.name,_ageBadge(d.ageReq),stats,CODEX_DESC[k]);}));}}
+  if(codexCat==='all'||codexCat==='build'){html+=_cxSection('🏛️ 建築');
+    for(const era of eras){const bs=Object.entries(BUILD_DEFS).filter(([k,d])=>(d.ageReq||'dark')===era);if(!bs.length)continue;
+      html+=_cxEra(era)+_cxGrid(bs.map(([k,d])=>{const stats=`❤️${d.hp}${d.atk?' ⚔️'+d.atk:''}${d.rng?' 🎯'+d.rng:''}${d.pb?' 👥+'+d.pb:''} ｜ ${_costStr(d.cost)}`;
+        return _cxCard(BLDG_ICONS[k]||'🏛️',null,d.name,_ageBadge(d.ageReq),stats,CODEX_DESC[k]);}));}}
+  if(codexCat==='all'||codexCat==='res'){html+=_cxSection('🌳 資源')+_cxGrid(RES_CODEX.map(r=>_cxCard(r.icon,r.c,r.name,'',null,r.desc)));}
+  if(codexCat==='all'||codexCat==='tech'){html+=_cxSection('🔬 科技')+_cxGrid(Object.entries(techs).map(([k,t])=>
+    _cxCard('🔬',0x6ea0d0,t.name,t.bldgReq?_ageBadge('feudal'):'',_costStr(t.cost),CODEX_DESC[k]||'升級科技。')));}
+  if(codexCat==='all'||codexCat==='age'){html+=_cxSection('⏳ 時代')+_cxGrid(Object.entries(AGES).map(([k,a])=>
+    _cxCard(a.icon,0xc0902f,a.name,'',a.cost&&Object.keys(a.cost).length?('升級需 '+_costStr(a.cost)):(a.next?'—':'最終時代'),AGE_DESC[k])));}
+  document.getElementById('codexBody').innerHTML=html;
+}
+function _cxTabs(){
+  const tabs=[['all','📋 全部'],['unit','⚔️ 單位'],['build','🏛️ 建築'],['res','🌳 資源'],['tech','🔬 科技'],['age','⏳ 時代']];
+  document.getElementById('codexTabs').innerHTML=tabs.map(([k,n])=>
+    `<div onclick="setCodexCat('${k}')" style="cursor:pointer;font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid ${codexCat===k?'#c0902f':'#444'};background:${codexCat===k?'rgba(192,144,47,.25)':'rgba(255,255,255,.04)'};color:${codexCat===k?'#ffd27a':'#ccc'};">${n}</div>`).join('');
+}
+window.setCodexCat=k=>{codexCat=k;_cxTabs();buildCodex();};
+window.openCodex=()=>{codexCat='all';_cxTabs();buildCodex();document.getElementById('codex').style.display='block';playClick&&playClick();};
+window.closeCodex=()=>{document.getElementById('codex').style.display='none';};
 function updateUnitInfo(){
   const p=document.getElementById('unitInfo');if(!p)return;
   const sel=selected();
