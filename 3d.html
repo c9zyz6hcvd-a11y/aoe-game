@@ -1299,6 +1299,20 @@ function blockedAt(x,y){
   }
   return false;
 }
+// 單位「真正目標」（tx/ty 行 path 時係途徑點，唔係終點）→ 看門狗用嚟判斷有冇接近終點
+function goalOf(v){
+  if(v.tRes&&v.tRes.res>0)return{x:v.tRes.x,y:v.tRes.y};
+  if(v.tEn&&v.tEn.hp>0)return{x:v.tEn.x,y:v.tEn.y};
+  if(v.tBldg)return{x:v.tBldg.x+(v.tBldg.w||40)/2,y:v.tBldg.y+(v.tBldg.h||40)/2};
+  if(v.aMove)return{x:v.aMoveX,y:v.aMoveY};
+  if(v.path&&v.path.length)return v.path[v.path.length-1];
+  return{x:v.tx,y:v.ty};
+}
+function repathTo(v,g){
+  const p=aStar(v.x,v.y,g.x,g.y);
+  if(p&&p.length){v.path=p;v.pi=0;v.tx=p[0].x;v.ty=p[0].y;return true;}
+  return false;
+}
 function mvUnit(v,dt){
   stepCooldown=Math.max(0,stepCooldown-dt);
   const dx=v.tx-v.x,dy=v.ty-v.y,d=Math.hypot(dx,dy);
@@ -1314,21 +1328,26 @@ function mvUnit(v,dt){
       v.x=nx;v.dir=Math.atan2(dx,dy);          // 沿牆滑 X
     }else if(!blockedAt(v.x,ny)){
       v.y=ny;v.dir=Math.atan2(dx,dy);          // 沿牆滑 Y
-    }else{
-      // 完全卡住 → A* 繞路（cooldown 防 chase 單位每幀重跑全圖拖 FPS）
-      v.rpT=(v.rpT||0)-dt;
-      if((!v.path||v.path.length===0)&&v.rpT<=0){
-        v.rpT=.8+Math.random()*.6;
-        v.path=aStar(v.x,v.y,v.tx,v.ty);v.pi=0;
-        if(v.path&&v.path.length>0){v.tx=v.path[0].x;v.ty=v.path[0].y;}
-      }
     }
+    // 無進度看門狗：貪心移動時（冇行緊 A* path），若一段時間都冇接近真正目標
+    // → 即係正貼住牆滑或者卡死 → 重算 A* 繞路。解決「沿直牆滑到天荒地老都唔識繞」。
+    if(!v.path||v.pi>=v.path.length){
+      const g=goalOf(v),gd=Math.hypot(g.x-v.x,g.y-v.y);
+      if(v.bestGd===undefined||gd<v.bestGd-3||gd>v.bestGd+60){v.bestGd=gd;v.progT=0;}
+      else{
+        v.progT=(v.progT||0)+dt;
+        // 隨機 0.9~1.3s 觸發 → 散開重算時間，唔會同幀全部單位齊齊跑 A*
+        if(v.progT>(v.rpThr||(v.rpThr=.9+Math.random()*.4))){
+          v.progT=0;v.bestGd=gd;v.rpThr=.9+Math.random()*.4;repathTo(v,g);
+        }
+      }
+    }else{v.bestGd=undefined;v.progT=0;}
     if(Math.sin(prevWt)>=0&&Math.sin(v.wt)<0){
       const heavy=v.type==='horseman'||v.type==='knight'||v.type==='catapult';
       spawnDust(v.x,v.y,heavy);
       if(v.team==='player')playStep(heavy);
     }
-  }else{v.mv=0;v.x=v.tx;v.y=v.ty;
+  }else{v.mv=0;v.x=v.tx;v.y=v.ty;v.bestGd=undefined;v.progT=0;
     if(v.state==='moving'){
       if(v.tRes&&v.tRes.res>0)v.state='gathering';
       else if(v.tEn&&v.tEn.hp>0)v.state='chase';
