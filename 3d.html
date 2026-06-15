@@ -1947,10 +1947,11 @@ const AGE_DESC={dark:'起始時代。基礎經濟同基本兵。',feudal:'解鎖
 const _RICON={wood:'🪵',food:'🍓',stone:'🪨',gold:'💰'};
 function _costStr(cost){if(!cost)return '';return Object.entries(cost).map(([k,v])=>(_RICON[k]||k)+v).join(' ');}
 function _ageBadge(ageReq){const a=ageReq&&AGES[ageReq];return a?`<span style="background:rgba(80,60,10,.85);color:#ffd27a;border-radius:8px;padding:1px 7px;font-size:10px;white-space:nowrap;">${a.icon}${a.name}</span>`:'';}
-function _cxCard(icon,col,name,badge,stats,desc){
+function _cxCard(icon,col,name,badge,stats,desc,thumb){
   const bg=col!=null?'#'+col.toString(16).padStart(6,'0'):'#3a3a44';
+  const visual=thumb?`<img src="${thumb}" style="width:100%;height:100%;object-fit:contain;">`:`<span style="font-size:32px;">${icon}</span>`;
   return `<div style="background:rgba(255,255,255,.04);border:1px solid #333;border-radius:12px;padding:11px;display:flex;gap:11px;align-items:flex-start;">
-    <div style="flex:0 0 58px;height:58px;border-radius:10px;background:${bg}2e;border:2px solid ${bg};display:flex;align-items:center;justify-content:center;font-size:32px;">${icon}</div>
+    <div style="flex:0 0 62px;height:62px;border-radius:10px;background:${bg}2e;border:2px solid ${bg};display:flex;align-items:center;justify-content:center;overflow:hidden;">${visual}</div>
     <div style="flex:1;min-width:0;">
       <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><b style="font-size:15px;color:#fff;">${name}</b>${badge}</div>
       ${stats?`<div style="font-size:11px;color:#ffd27a;margin:3px 0;">${stats}</div>`:''}
@@ -1958,20 +1959,58 @@ function _cxCard(icon,col,name,badge,stats,desc){
     </div></div>`;
 }
 let codexCat='all';
+// ===== 真 3D 模型縮圖：用獨立離屏 renderer 影低每個模型做圖鑑相 =====
+let _thumbR=null,_thumbCache={},_thumbsDone=false;
+function _getThumbR(){if(_thumbR)return _thumbR;
+  _thumbR=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
+  _thumbR.setSize(196,196);_thumbR.setPixelRatio(1);_thumbR.shadowMap.enabled=false;
+  if(THREE.SRGBColorSpace)_thumbR.outputColorSpace=THREE.SRGBColorSpace;return _thumbR;}
+function _captureThumb(obj,ang,tilt){
+  const r=_getThumbR();const sc=new THREE.Scene();
+  sc.add(new THREE.HemisphereLight(0xffffff,0x55654a,1.15));
+  const d1=new THREE.DirectionalLight(0xfff2d8,1.6);d1.position.set(4,7,5);sc.add(d1);
+  const d2=new THREE.DirectionalLight(0x90b0ff,.45);d2.position.set(-4,2,-3);sc.add(d2);
+  sc.add(obj);obj.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(obj);if(box.isEmpty()){sc.remove(obj);return null;}
+  const sz=box.getSize(new THREE.Vector3()),ctr=box.getCenter(new THREE.Vector3());
+  const maxd=Math.max(sz.x,sz.y,sz.z)||1;const cam=new THREE.PerspectiveCamera(30,1,.05,3000);
+  const dist=maxd*2.1;cam.position.set(ctr.x+Math.sin(ang)*dist,ctr.y+maxd*(tilt||.32),ctr.z+Math.cos(ang)*dist);
+  cam.lookAt(ctr.x,ctr.y-maxd*.05,ctr.z);r.render(sc,cam);
+  const url=r.domElement.toDataURL('image/png');sc.remove(obj);return url;
+}
+function _unitThumb(k){
+  const fu={type:k,team:'player',i:1,hp:10,mh:10,dir:0,sz:20,gi:.4,wt:0,cs:0};
+  const m=makeUnitMesh(fu);if(m.userData.ring)m.userData.ring.visible=false;
+  [fu.mixer,fu.mixH,fu.mixR].forEach(mx=>{if(mx)mx.update(.45);});
+  return _captureThumb(m,0.7,.34);
+}
+function _buildThumb(k){
+  const def=BUILD_DEFS[k];
+  const fb={id:-1,type:k,x:0,y:0,w:def.w,h:def.h,tier:k==='wall'?1:undefined,complete:true,hp:def.hp,maxHp:def.hp,team:'player',p:def.bt,bt:def.bt,pb:def.pb};
+  const m=makeBuildingMesh(fb);return _captureThumb(m,0.8,.5);
+}
+function ensureThumbs(){if(_thumbsDone)return;
+  try{_thumbCache['u_villager']=_unitThumb('villager');
+    for(const k of Object.keys(UNIT_DEFS))_thumbCache['u_'+k]=_unitThumb(k);
+    for(const k of Object.keys(BUILD_DEFS))_thumbCache['b_'+k]=_buildThumb(k);
+    _thumbsDone=true;}catch(e){console.warn('thumb gen 失敗',e);}}
 function _cxSection(t){return `<div style="font-size:14px;color:#9fd0ff;margin:18px 0 6px;border-bottom:1px solid #2a3a4a;padding-bottom:4px;">${t}</div>`;}
 function _cxEra(era){return `<div style="font-size:12px;color:#888;margin:10px 0 4px;">${AGES[era].icon} ${AGES[era].name}</div>`;}
 function _cxGrid(cards){return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:9px;">${cards.join('')}</div>`;}
 function buildCodex(){
   const eras=['dark','feudal','castle','imperial'];let html='';
   if(codexCat==='all'||codexCat==='unit'){html+=_cxSection('⚔️ 單位');
-    for(const era of eras){const us=Object.entries(UNIT_DEFS).filter(([k,d])=>(d.ageReq||'dark')===era);if(!us.length)continue;
-      html+=_cxEra(era)+_cxGrid(us.map(([k,d])=>{const col=ROLE_MARK[k]?ROLE_MARK[k].c:null;
+    for(const era of eras){let cards=[];
+      if(era==='dark')cards.push(_cxCard(UNIT_ICONS.villager,null,'村民',_ageBadge('dark'),'❤️40 ⚔️3 ｜ 🍓50 ｜ 採集＋建造',CODEX_DESC.villager,_thumbCache['u_villager']));
+      cards=cards.concat(Object.entries(UNIT_DEFS).filter(([k,d])=>(d.ageReq||'dark')===era).map(([k,d])=>{const col=ROLE_MARK[k]?ROLE_MARK[k].c:null;
         const stats=`❤️${d.hp} ⚔️${d.atk} 🎯${d.rng}${d.heal?' 🏥'+d.heal:''}${d.vision?' 👁️'+d.vision:''}${d.splash?' 💥'+d.splash:''} ｜ ${_costStr(d.cost)}`;
-        return _cxCard(UNIT_ICONS[k]||'❓',col,d.name,_ageBadge(d.ageReq),stats,CODEX_DESC[k]);}));}}
+        return _cxCard(UNIT_ICONS[k]||'❓',col,d.name,_ageBadge(d.ageReq),stats,CODEX_DESC[k],_thumbCache['u_'+k]);}));
+      if(!cards.length)continue;
+      html+=_cxEra(era)+_cxGrid(cards);}}
   if(codexCat==='all'||codexCat==='build'){html+=_cxSection('🏛️ 建築');
     for(const era of eras){const bs=Object.entries(BUILD_DEFS).filter(([k,d])=>(d.ageReq||'dark')===era);if(!bs.length)continue;
       html+=_cxEra(era)+_cxGrid(bs.map(([k,d])=>{const stats=`❤️${d.hp}${d.atk?' ⚔️'+d.atk:''}${d.rng?' 🎯'+d.rng:''}${d.pb?' 👥+'+d.pb:''} ｜ ${_costStr(d.cost)}`;
-        return _cxCard(BLDG_ICONS[k]||'🏛️',null,d.name,_ageBadge(d.ageReq),stats,CODEX_DESC[k]);}));}}
+        return _cxCard(BLDG_ICONS[k]||'🏛️',null,d.name,_ageBadge(d.ageReq),stats,CODEX_DESC[k],_thumbCache['b_'+k]);}));}}
   if(codexCat==='all'||codexCat==='res'){html+=_cxSection('🌳 資源')+_cxGrid(RES_CODEX.map(r=>_cxCard(r.icon,r.c,r.name,'',null,r.desc)));}
   if(codexCat==='all'||codexCat==='tech'){html+=_cxSection('🔬 科技')+_cxGrid(Object.entries(techs).map(([k,t])=>
     _cxCard('🔬',0x6ea0d0,t.name,t.bldgReq?_ageBadge('feudal'):'',_costStr(t.cost),CODEX_DESC[k]||'升級科技。')));}
@@ -1985,7 +2024,7 @@ function _cxTabs(){
     `<div onclick="setCodexCat('${k}')" style="cursor:pointer;font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid ${codexCat===k?'#c0902f':'#444'};background:${codexCat===k?'rgba(192,144,47,.25)':'rgba(255,255,255,.04)'};color:${codexCat===k?'#ffd27a':'#ccc'};">${n}</div>`).join('');
 }
 window.setCodexCat=k=>{codexCat=k;_cxTabs();buildCodex();};
-window.openCodex=()=>{codexCat='all';_cxTabs();buildCodex();document.getElementById('codex').style.display='block';playClick&&playClick();};
+window.openCodex=()=>{codexCat='all';ensureThumbs();_cxTabs();buildCodex();document.getElementById('codex').style.display='block';playClick&&playClick();};
 window.closeCodex=()=>{document.getElementById('codex').style.display='none';};
 function updateUnitInfo(){
   const p=document.getElementById('unitInfo');if(!p)return;
@@ -2297,6 +2336,7 @@ function pickClip(clips,res){for(const re of res){const c=clips.find(c=>re.test(
     off:{x:-hc.x*hs,y:-hb.min.y*hs,z:-hc.z*hs}};
   for(const u of units){if(u.mesh){scene.remove(u.mesh);u.mesh=null;u.mixer=null;u.actions=null;u.cur=null;
     u.mixH=null;u.mixR=null;u.rActs=null;u.rCur=null;}}
+  _thumbsDone=false;_thumbCache={}; // GLB 載入完 → 圖鑑縮圖重新用真模型生成
 }catch(e){console.warn('GLB 載入失敗，用程序化模型',e);}})();
 function mkAct(mixer,clips,res){const c=pickClip(clips,res);return c?mixer.clipAction(c):null;}
 // 兵種 tint（同一個模型分到唔同兵種用）
