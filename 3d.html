@@ -2312,9 +2312,13 @@ function makeCatapult(en){
   return g;
 }
 // ---- KayKit 真模型 ----
-const CHAR_SRC={villager:'assets/Barbarian.glb',swordsman:'assets/Knight.glb',archer:'assets/Rogue_Hooded.glb',
-  spearman:'assets/Knight.glb',mass_archer:'assets/Rogue_Hooded.glb',
-  monk:'assets/Rogue_Hooded.glb',scout:'assets/Knight.glb'};
+// 5 個唔同模型(KayKit Adventurers CC0)分配畀兵種 → 用戶點名嘅對都係唔同模型
+const CHAR_SRC={villager:'assets/Barbarian.glb',swordsman:'assets/Knight.glb',
+  spearman:'assets/Barbarian.glb',      // 矛兵=蠻族(裸上身)→ 同劍兵(騎士甲)明顯唔同
+  archer:'assets/Rogue_Hooded.glb',     // 弓兵=兜帽盜賊
+  mass_archer:'assets/Rogue.glb',       // 連弩=無兜帽盜賊 → 同弓兵唔同
+  monk:'assets/Mage.glb',               // 僧侶=法師(長袍) → 同弓兵/連弩完全唔同
+  scout:'assets/Rogue.glb'};
 const charLib={};let horseLib=null;
 const gltfLoader=new GLTFLoader();
 const loadGLB=url=>new Promise((res,rej)=>gltfLoader.load(url,res,undefined,rej));
@@ -2350,36 +2354,28 @@ const TINTS={
   scout:{player:0xc8a870,enemy:0xc06030,amt:.5},
 };
 // 共用模型嘅兵種 → 插唔同武器／裝備落真‧手骨，整出真正唔同嘅外形（唔係淨係換色）
+const _WEAPON_RE=/sword|axe|knife|staff|bow|spell|book|offhand|wand|dagger|mace|hammer|shield|weapon|crossbow|quiver/i;
 function styleFootUnit(u,model,lib){
   const k=1/lib.scale, t=u.type, en=u.team==='enemy';
   const sR=model.getObjectByName('handslotr'), sL=model.getObjectByName('handslotl');
-  const STEEL=matM(0xd8dde2);
-  // 收起模型自帶嘅 offhand 武器（全部兵共用嗰把 → 會撞樣）
-  model.traverse(m=>{if(/Offhand|Knife/i.test(m.name||''))m.visible=false;});
-  const sword=(slot,len)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(.07*k,len*k,.024*k),STEEL);b.position.y=len*.55*k;b.castShadow=true;slot.add(b);
-    const gd=new THREE.Mesh(new THREE.BoxGeometry(.22*k,.05*k,.06*k),mat(0x8a6a30));gd.position.y=.06*k;slot.add(gd);};
-  const spear=(slot)=>{const sh=new THREE.Mesh(new THREE.CylinderGeometry(.03*k,.03*k,2.3*k,6),mat(0x6b4a2a));sh.position.y=.95*k;sh.castShadow=true;slot.add(sh);
-    const tp=new THREE.Mesh(new THREE.ConeGeometry(.07*k,.26*k,6),STEEL);tp.position.y=2.15*k;slot.add(tp);};
-  const shield=(slot,col)=>{const s=new THREE.Mesh(new THREE.CylinderGeometry(.32*k,.32*k,.07*k,16),mat(col));s.rotation.z=Math.PI/2;s.position.set(0,.04*k,.05*k);s.castShadow=true;slot.add(s);
-    const bo=new THREE.Mesh(new THREE.SphereGeometry(.07*k,8,6),STEEL);bo.position.set(.05*k,.04*k,.05*k);slot.add(bo);};
-  const bow=(slot)=>{const b=new THREE.Mesh(new THREE.TorusGeometry(.36*k,.026*k,6,14,Math.PI*1.2),mat(0x6b4a2a));b.rotation.z=Math.PI/2;b.castShadow=true;slot.add(b);
-    const st=new THREE.Mesh(new THREE.CylinderGeometry(.007*k,.007*k,.66*k,4),mat(0xeeeeee));slot.add(st);};
-  const crossbow=(slot)=>{const stock=new THREE.Mesh(new THREE.BoxGeometry(.05*k,.5*k,.06*k),mat(0x6b4a2a));stock.position.y=.18*k;stock.castShadow=true;slot.add(stock);
-    const limb=new THREE.Mesh(new THREE.BoxGeometry(.62*k,.035*k,.05*k),mat(0x333333));limb.position.y=.34*k;slot.add(limb);
-    const tip=new THREE.Mesh(new THREE.ConeGeometry(.03*k,.16*k,5),STEEL);tip.position.y=.5*k;slot.add(tip);};
-  const staff=(slot)=>{const sh=new THREE.Mesh(new THREE.CylinderGeometry(.026*k,.026*k,2.05*k,6),mat(0x7a5a36));sh.position.y=.85*k;sh.castShadow=true;slot.add(sh);
-    const orb=new THREE.Mesh(new THREE.SphereGeometry(.1*k,10,8),matE(0xffe27a));orb.position.y=1.95*k;slot.add(orb);};
-  const quiver=(col)=>{const sp=model.getObjectByName('spine')||model.getObjectByName('chest');if(!sp)return;
+  // KayKit 模型自帶一拼武器，全部 visible → 先全部收起，再揀返一件（用模型自己嘅靚 mesh）
+  model.traverse(m=>{if(m.isMesh&&_WEAPON_RE.test(m.name||''))m.visible=false;});
+  const show=names=>model.traverse(m=>{if(m.isMesh&&names.includes(m.name))m.visible=true;});
+  // 模型冇嘅武器(長矛/長弓)就自製
+  const spear=slot=>{const sh=new THREE.Mesh(new THREE.CylinderGeometry(.03*k,.03*k,2.3*k,6),mat(0x6b4a2a));sh.position.y=.95*k;sh.castShadow=true;slot.add(sh);
+    const tp=new THREE.Mesh(new THREE.ConeGeometry(.07*k,.26*k,6),matM(0xd8dde2));tp.position.y=2.15*k;slot.add(tp);};
+  const bow=slot=>{const b=new THREE.Mesh(new THREE.TorusGeometry(.36*k,.03*k,6,14,Math.PI*1.25),mat(0x6b4a2a));b.rotation.z=Math.PI/2;b.castShadow=true;slot.add(b);
+    const st=new THREE.Mesh(new THREE.CylinderGeometry(.008*k,.008*k,.7*k,4),mat(0xeeeeee));slot.add(st);};
+  const quiver=col=>{const sp=model.getObjectByName('spine')||model.getObjectByName('chest');if(!sp)return;
     const q=new THREE.Mesh(new THREE.CylinderGeometry(.08*k,.06*k,.5*k,8),mat(col));q.position.set(.13*k,.05*k,-.16*k);q.rotation.set(-.3,0,.2);sp.add(q);
     for(let i=0;i<3;i++){const a=new THREE.Mesh(new THREE.CylinderGeometry(.009*k,.009*k,.34*k,4),mat(0xddccaa));a.position.set(.13*k+(i-1)*.05*k,.32*k,-.16*k);a.rotation.z=.2;sp.add(a);}};
-  const robe=(col)=>{const hip=model.getObjectByName('hips');if(!hip)return;
-    const r=new THREE.Mesh(new THREE.CylinderGeometry(.2*k,.44*k,.92*k,12,1,true),mat(col));r.position.y=-.42*k;hip.add(r);};
-  if(t==='swordsman'){ if(sR)sword(sR,.82); if(sL)shield(sL,en?0x7a2828:0x24508c); }
-  else if(t==='spearman'){ if(sR)spear(sR); }
-  else if(t==='scout'){ if(sR)sword(sR,.5); } // 短刀＋細隻（scale 喺 makeGLBUnit）
-  else if(t==='archer'){ if(sL)bow(sL); quiver(en?0x6e3a22:0x2c5e3a); }
-  else if(t==='mass_archer'){ if(sR)crossbow(sR); quiver(0x5a3a9a); }
-  else if(t==='monk'){ if(sR)staff(sR); robe(en?0x9a7a30:0xe8e8f0); }
+  if(t==='villager'){ show(['1H_Axe']); }                       // 蠻族＋伐木斧
+  else if(t==='swordsman'){ show(['1H_Sword','Round_Shield']); } // 騎士甲＋劍＋圓盾
+  else if(t==='spearman'){ if(sR)spear(sR); }                   // 蠻族裸上身＋長矛
+  else if(t==='scout'){ show(['Knife']); }                      // 盜賊＋短刀(細隻)
+  else if(t==='archer'){ if(sL)bow(sL); quiver(en?0x6e3a22:0x2c5e3a); } // 兜帽盜賊＋長弓
+  else if(t==='mass_archer'){ show(['1H_Crossbow']); }          // 盜賊＋自帶弩
+  else if(t==='monk'){ show(['2H_Staff']); }                    // 法師長袍＋法杖
 }
 function makeGLBUnit(u){
   const en=u.team==='enemy';
@@ -2393,7 +2389,7 @@ function makeGLBUnit(u){
   c.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
     if(tint){m.material=m.material.clone();if(m.material.color)m.material.color.lerp(new THREE.Color(tint),tintDef.amt);}}});
   body.add(c);
-  if(u.type!=='villager')styleFootUnit(u,c,lib); // 村民保留 Barbarian 原裝（已易認）
+  styleFootUnit(u,c,lib); // 揀返每個兵種應有嘅武器（含村民伐木斧）
   u.mixer=new THREE.AnimationMixer(c);
   const cl=lib.clips;
   u.actions={
@@ -2431,8 +2427,8 @@ function makeMountedGLB(u){
   // 鞍 + 氈
   const bk=box(1.0,.1,1.26,isKnight?0xc8a030:(en?0x8a2828:0x28508a));bk.position.set(0,1.82,-.43);body.add(bk);
   const sd=box(.72,.15,.82,0x4a3a26);sd.position.set(0,1.92,-.43);body.add(sd);
-  // 騎士（KayKit，骨骼擺騎姿，同步兵一樣大）
-  const lib=charLib.swordsman;
+  // 騎手模型：騎士=Knight(甲)、騎兵=Barbarian(裸上身)→ 兩者明顯唔同
+  const lib=isKnight?charLib.swordsman:(charLib.villager||charLib.swordsman);
   const r=SkeletonUtils.clone(lib.scene);
   r.scale.setScalar(lib.scale);
   r.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
@@ -2449,8 +2445,8 @@ function makeMountedGLB(u){
     ull:r.getObjectByName('upperlegl'),ulr:r.getObjectByName('upperlegr'),
     lll:r.getObjectByName('lowerlegl'),llr:r.getObjectByName('lowerlegr'),
     ftl:r.getObjectByName('footl'),ftr:r.getObjectByName('footr')};
-  // 收起模型自帶嘅 offhand 武器（騎士／騎兵共用嗰把 → 撞樣）
-  r.traverse(m=>{if(/Offhand|Knife/i.test(m.name||''))m.visible=false;});
+  // 收起騎手模型自帶嘅全部武器（下面再加返劍／長矛）
+  r.traverse(m=>{if(m.isMesh&&_WEAPON_RE.test(m.name||''))m.visible=false;});
   // 武器插喺手 slot
   const slot=r.getObjectByName('handslotr');
   if(slot){const k=1/lib.scale;
