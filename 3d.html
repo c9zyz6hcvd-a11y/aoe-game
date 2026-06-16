@@ -1984,6 +1984,9 @@ function _unitThumb(k){
   m.traverse(o=>{if(o.userData&&o.userData.roleMark)o.visible=false;}); // 收起頭頂徽記(太高令模型睇落細)
   [fu.mixer,fu.mixH,fu.mixR].forEach(mx=>{if(mx)mx.update(.45);});
   const mounted=(k==='horseman'||k==='knight');
+  if(mounted){const rb=m.userData.rb; // 套騎姿(同遊戲 update 一樣)，否則靜態縮圖隻腳直直似浮喺馬上
+    if(rb&&rb.ull){rb.ull.rotation.set(-1.25,0,.42);rb.ulr.rotation.set(-1.25,0,-.42);
+      rb.lll.rotation.x=1.35;rb.llr.rotation.x=1.35;if(rb.ftl){rb.ftl.rotation.x=-.35;rb.ftr.rotation.x=-.35;}}}
   // 騎乘：個矛/馬令 bbox 變大 → 收近啲、睇低啲 frame 住馬同騎手
   return mounted?_captureThumb(m,0.7,.12,1.5,.22):_captureThumb(m,0.7,.34);
 }
