@@ -1965,30 +1965,38 @@ function _getThumbR(){if(_thumbR)return _thumbR;
   _thumbR=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
   _thumbR.setSize(196,196);_thumbR.setPixelRatio(1);_thumbR.shadowMap.enabled=false;
   if(THREE.SRGBColorSpace)_thumbR.outputColorSpace=THREE.SRGBColorSpace;return _thumbR;}
-function _captureThumb(obj,ang,tilt,distMul,lookBias){
+function _captureThumb(obj,ang,tilt,box){
   const r=_getThumbR();const sc=new THREE.Scene();
   sc.add(new THREE.HemisphereLight(0xffffff,0x55654a,1.15));
   const d1=new THREE.DirectionalLight(0xfff2d8,1.6);d1.position.set(4,7,5);sc.add(d1);
   const d2=new THREE.DirectionalLight(0x90b0ff,.45);d2.position.set(-4,2,-3);sc.add(d2);
   sc.add(obj);obj.updateMatrixWorld(true);
-  const box=new THREE.Box3().setFromObject(obj);if(box.isEmpty()){sc.remove(obj);return null;}
+  if(!box)box=new THREE.Box3().setFromObject(obj);
+  if(box.isEmpty()){sc.remove(obj);return null;}
   const sz=box.getSize(new THREE.Vector3()),ctr=box.getCenter(new THREE.Vector3());
-  const maxd=Math.max(sz.x,sz.y,sz.z)||1;const cam=new THREE.PerspectiveCamera(30,1,.05,3000);
-  const dist=maxd*(distMul||2.1);cam.position.set(ctr.x+Math.sin(ang)*dist,ctr.y+maxd*(tilt||.32),ctr.z+Math.cos(ang)*dist);
-  cam.lookAt(ctr.x,ctr.y-maxd*(lookBias!=null?lookBias:.05),ctr.z);r.render(sc,cam);
+  // 半徑取「最闊水平 + 高度」嘅外接球 → 精準 fit、subject 填滿格
+  const radius=.5*Math.hypot(Math.max(sz.x,sz.z),sz.y);
+  const cam=new THREE.PerspectiveCamera(30,1,.05,3000);
+  const dist=radius/Math.tan(15*Math.PI/180)*1.04; // 30° fov 半角=15°，1.04 留少少邊
+  cam.position.set(ctr.x+Math.sin(ang)*dist,ctr.y+sz.y*(tilt||.18),ctr.z+Math.cos(ang)*dist);
+  cam.lookAt(ctr.x,ctr.y,ctr.z); // 正中 bbox 中心
+  r.render(sc,cam);
   const url=r.domElement.toDataURL('image/png');sc.remove(obj);return url;
 }
 function _unitThumb(k){
   const fu={type:k,team:'player',i:1,hp:10,mh:10,dir:0,sz:20,gi:.4,wt:0,cs:0};
   const m=makeUnitMesh(fu);if(m.userData.ring)m.userData.ring.visible=false;
-  m.traverse(o=>{if(o.userData&&o.userData.roleMark)o.visible=false;}); // 收起頭頂徽記(太高令模型睇落細)
+  m.traverse(o=>{if(o.userData&&o.userData.roleMark)o.visible=false;}); // 收起頭頂徽記
   [fu.mixer,fu.mixH,fu.mixR].forEach(mx=>{if(mx)mx.update(.45);});
   const mounted=(k==='horseman'||k==='knight');
-  if(mounted){const rb=m.userData.rb; // 套騎姿(同遊戲 update 一樣)，否則靜態縮圖隻腳直直似浮喺馬上
+  if(mounted){const rb=m.userData.rb; // 套騎姿(同遊戲 update 一樣)
     if(rb&&rb.ull){rb.ull.rotation.set(-1.25,0,.42);rb.ulr.rotation.set(-1.25,0,-.42);
-      rb.lll.rotation.x=1.35;rb.llr.rotation.x=1.35;if(rb.ftl){rb.ftl.rotation.x=-.35;rb.ftr.rotation.x=-.35;}}}
-  // 騎乘：個矛/馬令 bbox 變大 → 收近啲、睇低啲 frame 住馬同騎手
-  return mounted?_captureThumb(m,0.7,.12,1.5,.22):_captureThumb(m,0.7,.34);
+      rb.lll.rotation.x=1.35;rb.llr.rotation.x=1.35;if(rb.ftl){rb.ftl.rotation.x=-.35;rb.ftr.rotation.x=-.35;}}
+    // 馬係 skinned mesh，bind-pose bbox 失真(z~11)→ 用固定已知 box frame 住馬+騎手
+    const box=new THREE.Box3(new THREE.Vector3(-1.75,0,-1.95),new THREE.Vector3(1.75,4.3,1.55));
+    return _captureThumb(m,0.7,.1,box);
+  }
+  return _captureThumb(m,0.7,.3);
 }
 function _buildThumb(k){
   const def=BUILD_DEFS[k];
