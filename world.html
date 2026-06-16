@@ -1560,6 +1560,7 @@ function camKeys(dt){const v=camDist*.9*dt;let mx=0,mz=0;
 // 單位中心點唔可以入任何完成建築嘅 rect（margin 令相鄰城牆 rect 重疊 → 封死縫隙）
 function blockedAt(x,y){
   const m=2;
+  if(isRiver(x,y))return true; // 河面不可行（渡口除外）→ 連續移動都過唔到，要繞渡口
   for(const b of buildings){
     if(!b.complete||b.hp<=0)continue;
     if(x>b.x-m&&x<b.x+b.w+m&&y>b.y-m&&y<b.y+b.h+m)return true;
