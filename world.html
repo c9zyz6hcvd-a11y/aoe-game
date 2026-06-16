@@ -1272,8 +1272,12 @@ const riverCells=(()=>{
   return s;
 })();
 function isRiver(x,y){return riverCells.has((~~(x/PF))+','+(~~(y/PF)));}
+// 高山格（靜態）：太行山等高地 = 不可越天然屏障（只 block terrainY>40，即極西一條山脊）
+const mountainCells=(()=>{const s=new Set();for(let gx=0;gx<PFG;gx++)for(let gy=0;gy<PFR;gy++){const cx=gx*PF+PF/2,cy=gy*PF+PF/2;if(terrainY(cx,cy)>40)s.add(gx+','+gy);}return s;})();
+function isMountain(x,y){return mountainCells.has((~~(x/PF))+','+(~~(y/PF)));}
 function blockedSet(){
   const s=new Set(riverCells);
+  for(const c of mountainCells)s.add(c);
   const markBox=(x0,y0,x1,y1)=>{
     const gx0=Math.max(0,~~(x0/PF)),gx1=Math.min(PFG-1,~~(x1/PF)),
           gy0=Math.max(0,~~(y0/PF)),gy1=Math.min(PFR-1,~~(y1/PF));
@@ -1565,6 +1569,7 @@ function camKeys(dt){const v=camDist*.9*dt;let mx=0,mz=0;
 function blockedAt(x,y){
   const m=2;
   if(isRiver(x,y))return true; // 河面不可行（渡口除外）→ 連續移動都過唔到，要繞渡口
+  if(isMountain(x,y))return true; // 高山不可越（連續移動）
   for(const b of buildings){
     if(!b.complete||b.hp<=0)continue;
     if(x>b.x-m&&x<b.x+b.w+m&&y>b.y-m&&y<b.y+b.h+m)return true;
