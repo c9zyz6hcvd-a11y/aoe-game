@@ -3004,6 +3004,15 @@ function drawOverlay(){
 function drawMinimap(){
   const sx=180/WORLD.w,sy=135/WORLD.h;
   mctx.fillStyle='#2e4a22';mctx.fillRect(0,0,180,135);
+  // 河流（+ 渡口）
+  const _rcol=['#caa23c','#3f86d6'];
+  for(let pi=0;pi<RIVER_PATHS.length;pi++){const path=RIVER_PATHS[pi];
+    mctx.strokeStyle=_rcol[pi];mctx.lineWidth=Math.max(2,RIVER_HW*2*sx);mctx.lineCap='round';mctx.lineJoin='round';
+    mctx.beginPath();path.forEach((p,i)=>{const px=p[0]*sx,py=p[1]*sy;i===0?mctx.moveTo(px,py):mctx.lineTo(px,py);});mctx.stroke();
+    const fx=RIVER_FORDS[pi];let fy=null;
+    for(let i=0;i<path.length-1;i++){const a=path[i],b=path[i+1];if((fx>=a[0]&&fx<=b[0])||(fx>=b[0]&&fx<=a[0])){const t=(fx-a[0])/((b[0]-a[0])||1);fy=a[1]+(b[1]-a[1])*t;break;}}
+    if(fy!=null){mctx.fillStyle='#e8dcae';mctx.fillRect(fx*sx-FORD_HW*sx,fy*sy-2,FORD_HW*2*sx,4);} // 渡口
+  }
   for(const t of trees)if(t.res>0){mctx.fillStyle='#3f7d2c';mctx.fillRect(t.x*sx-1.5,t.y*sy-1.5,3,3);}
   for(const b of bushes)if(b.res>0){mctx.fillStyle='#c04050';mctx.fillRect(b.x*sx-1.5,b.y*sy-1.5,3,3);}
   for(const s of stones)if(s.res>0){mctx.fillStyle='#999';mctx.fillRect(s.x*sx-1.5,s.y*sy-1.5,3,3);}
