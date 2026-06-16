@@ -113,6 +113,8 @@
   background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #c0902f;">📖 圖鑑</div>
 <div id="mapBtn" onclick="toggleMapView()" style="position:fixed;top:152px;right:8px;color:#9be29b;font-size:12px;font-weight:bold;
   background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #4caf50;">🗺️ 地圖 (M)</div>
+<div id="fireBtn" onclick="startFireAttack()" style="position:fixed;top:188px;right:8px;color:#ffb070;font-size:12px;font-weight:bold;
+  background:rgba(40,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #e0662f;">🔥 火攻 (F)</div>
 <div id="codex" style="display:none;position:fixed;inset:0;background:rgba(8,10,14,.94);z-index:350;overflow-y:auto;color:#eee;">
   <div style="max-width:1000px;margin:0 auto;padding:18px 16px 60px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -1079,6 +1081,79 @@ function updateSmokes(dt){
     o.s.material.opacity=Math.max(0,Math.min(.7,o.life*.5));
     if(o.life<=0){scene.remove(o.s);o.s.material.dispose();smokes.splice(i,1);}}
 }
+// ===== 🔥 火 · 風 系統（emergent 戰術；火燒連環船嘅核心）=====
+// 火會順風蔓延，但只沿住「連住嘅燃料」(樹/兵/建築)燒得開，空地會熄 → 聚埋=危險、疏散=安全。
+let windAng=Math.random()*6.28, windSpd=0.6;
+const fires=[]; const FIRE_CAP=150, FIRE_LIFE=6.5, FIRE_R=42;
+let fireCd=0; const FIRE_CD=15;
+const _windHud=document.createElement('div');
+_windHud.id='windHud';
+_windHud.style.cssText='position:fixed;left:8px;bottom:8px;z-index:6;background:rgba(0,0,0,.55);color:#cfe;font-size:12px;padding:4px 10px;border-radius:14px;pointer-events:none;font-family:sans-serif;';
+document.body.appendChild(_windHud);
+function makeFlame(){
+  const g=new THREE.Group();
+  const c1=new THREE.Mesh(new THREE.ConeGeometry(1.0,2.4,6),new THREE.MeshBasicMaterial({color:0xff5a14,transparent:true,opacity:.92}));c1.position.y=1.2;
+  const c2=new THREE.Mesh(new THREE.ConeGeometry(.55,1.5,6),new THREE.MeshBasicMaterial({color:0xffd23a,transparent:true,opacity:.96}));c2.position.y=.85;
+  g.add(c1,c2);return g;
+}
+function fireNear(x,y,d){for(const f of fires)if(Math.hypot(f.x-x,f.y-y)<d)return true;return false;}
+function nearFuel(x,y,d){
+  for(const t of trees)if(t.res>0&&Math.hypot(t.x-x,t.y-y)<d)return true;
+  for(const u of units)if(u.hp>0&&Math.hypot(u.x-x,u.y-y)<d)return true;
+  for(const b of buildings)if(b.hp>0&&Math.hypot((b.x+b.w/2)-x,(b.y+b.h/2)-y)<d)return true;
+  return false;
+}
+function igniteFire(x,y,heat){
+  if(fires.length>=FIRE_CAP||x<0||x>WORLD.w||y<0||y>WORLD.h)return null;
+  const fl=makeFlame();fl.position.set(x/S,.15,y/S);scene.add(fl);
+  const f={x,y,life:FIRE_LIFE,age:0,heat:heat==null?1:heat,fl};fires.push(f);
+  return f;
+}
+function igniteAttack(wpos){
+  if(fireCd>0){showStatus('🔥 火攻冷卻中 '+Math.ceil(fireCd)+'s');return;}
+  igniteFire(wpos.x,wpos.y,1.2);
+  for(let i=0;i<3;i++)igniteFire(wpos.x+(Math.random()-.5)*40,wpos.y+(Math.random()-.5)*40,1.1); // 火把擲入
+  fireCd=FIRE_CD;placingType=null;
+  showStatus('🔥 放火！火會順風蔓延');play&&play(120,55,.2,.25,'sawtooth');
+}
+window.startFireAttack=()=>{
+  if(fireCd>0){showStatus('🔥 火攻冷卻中 '+Math.ceil(fireCd)+'s');return;}
+  placingType='fire';showStatus('🔥 點地面/敵營放火（順風蔓延，小心燒到自己人）');playClick&&playClick();
+};
+let _fireAcc=0;
+function updateFire(dt){
+  windAng+=(Math.sin(gameTime*0.13)+(Math.random()-.5))*dt*0.18;        // 風向緩慢漂移
+  windSpd=0.5+0.45*(0.5+0.5*Math.sin(gameTime*0.21));                   // 風力起伏
+  const arrows=['→','↘','↓','↙','←','↖','↑','↗'];
+  const ar=arrows[Math.round(((windAng%6.283+6.283)%6.283)/(Math.PI/4))%8];
+  _windHud.textContent='💨 風 '+ar+'  強度 '+windSpd.toFixed(1)+(fireCd>0?'   🔥冷卻 '+Math.ceil(fireCd)+'s':'   🔥火攻就緒(F)');
+  if(fireCd>0)fireCd=Math.max(0,fireCd-dt);
+  _fireAcc+=dt;let fdt=0;if(_fireAcc>=0.1){fdt=_fireAcc;_fireAcc=0;}
+  for(let i=fires.length-1;i>=0;i--){
+    const f=fires[i];f.age+=dt;f.life-=dt;
+    const inten=Math.min(1,f.age*2.2)*Math.max(0,Math.min(1,f.life/1.6));
+    const s=(0.55+inten*0.9)*(0.82+Math.random()*0.32);
+    f.fl.scale.set(s,s*(1+Math.random()*0.5),s);f.fl.rotation.y=Math.random()*6;
+    if(Math.random()<dt*5)spawnSmoke(f.x,f.y,1.6,true);
+    if(fdt>0){
+      for(const u of units)if(u.hp>0&&Math.hypot(u.x-f.x,u.y-f.y)<FIRE_R)dealDamage(u,11*fdt*inten,null);
+      for(const b of buildings)if(b.hp>0){const bx=b.x+b.w/2,by=b.y+b.h/2;
+        if(Math.hypot(bx-f.x,by-f.y)<FIRE_R+8){const sf=(b.type==='castle_bldg'||b.type==='tower'||(b.type==='wall'&&(b.tier||1)>=2))?0.4:1;dealDamage(b,6*sf*fdt*inten,null);}}
+      [tc,etc].forEach(c=>{if(c&&c.hp>0){const bx=c.x+c.w/2,by=c.y+c.h/2;if(Math.hypot(bx-f.x,by-f.y)<FIRE_R+10)dealDamage(c,3*fdt*inten,null);}});
+      for(const t of trees)if(t.res>0&&Math.hypot(t.x-f.x,t.y-f.y)<FIRE_R)t.res=Math.max(0,t.res-26*fdt*inten);
+      if(f.age<3.4&&fires.length<FIRE_CAP){                              // 順風蔓延
+        const off=42+windSpd*36, a=windAng+(Math.random()-.5)*0.8;
+        const tx=f.x+Math.cos(a)*off, ty=f.y+Math.sin(a)*off;
+        if(!fireNear(tx,ty,30)){
+          const fuel=nearFuel(tx,ty,50);
+          const ch=(fuel?1.0:0.12)*(0.5+windSpd)*fdt*inten*2.4;           // 有燃料先燒得開
+          if(Math.random()<ch)igniteFire(tx,ty,f.heat*0.97);
+        }
+      }
+    }
+    if(f.life<=0){scene.remove(f.fl);f.fl.children.forEach(o=>o.material&&o.material.dispose());fires.splice(i,1);}
+  }
+}
 // ---- 飛行物（箭/投石，拋物線） ----
 const projs=[];
 function makeArrowMesh(){
@@ -1338,6 +1413,7 @@ addEventListener('mousemove',e=>{if(!mouseDown)return;
 addEventListener('mouseup',e=>{if(e.button!==0||!mouseDown)return;
   const _bd=bottomDead();
   if(_bd&&e.clientY>innerHeight-_bd){mouseDown=null;bxSel=0;bxR=null;dragM=0;return;}
+  if(placingType==='fire'){mouseDown=null;bxSel=0;bxR=null;dragM=0;igniteAttack(sw(e.clientX,e.clientY));return;}
   if(placingType){mouseDown=null;bxSel=0;bxR=null;dragM=0;placeBuilding(sw(e.clientX,e.clientY));return;}
   const w=sw(e.clientX,e.clientY);
   const myTC=MYTEAM==='player'?tc:etc;
@@ -1369,7 +1445,7 @@ addEventListener('mouseup',e=>{if(e.button!==0||!mouseDown)return;
       else if(hb){selectedBldg=hb;showStatus(hb.name);}
       else selectedBldg=null;}
   }mouseDown=null;bxSel=0;bxR=null;dragM=0;});
-canvas.addEventListener('contextmenu',e=>{e.preventDefault();if(placingType){placeBuilding(sw(e.clientX,e.clientY));return;}if(!selected().length)return;const w=sw(e.clientX,e.clientY);issueCmd(w.x,w.y);});
+canvas.addEventListener('contextmenu',e=>{e.preventDefault();if(placingType==='fire'){igniteAttack(sw(e.clientX,e.clientY));return;}if(placingType){placeBuilding(sw(e.clientX,e.clientY));return;}if(!selected().length)return;const w=sw(e.clientX,e.clientY);issueCmd(w.x,w.y);});
 canvas.addEventListener('wheel',e=>{e.preventDefault();
   if(e.ctrlKey||e.metaKey){camDist=Math.min(150,Math.max(28,camDist*(e.deltaY>0?1.07:.94)));}
   else{const k=camDist/900;camT.x+=e.deltaX*k;camT.z+=e.deltaY*k;}
@@ -1401,6 +1477,7 @@ function setMapView(on){
 window.toggleMapView=()=>setMapView(!_mapView);
 addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('codex').style.display==='block'){closeCodex();return;}
   if((e.key==='m'||e.key==='M')&&!placingType){toggleMapView();return;}
+  if((e.key==='f'||e.key==='F')&&!placingType){startFireAttack();return;}
   if(e.key==='Escape'&&_mapView){setMapView(false);return;}
   if(e.key==='Escape'&&placingType){placingType=null;showStatus('已取消');playClick();return;}keys[e.key]=1;
   if(e.key==='a'||e.key==='A'){selectedBldg=null;units.forEach(u=>{if(u.team===MYTEAM&&u.type==='villager')u.sel=1;});
@@ -1847,7 +1924,7 @@ function update(dt){
     if(b.p>=b.bt){b.complete=1;b.hp=b.maxHp;b.autoBuild=false;
       playBuildDone&&playBuildDone();spawnFx(b.x+b.w/2,b.y+b.h/2,'#ffd250',10);}}}
   units.forEach(v=>{updateVil(v,dt);updateCombat(v,dt);});
-  gameTime+=dt;updateTowers(dt);if(!mp.ready)enemyAI(dt);updateAge(dt);updateProjs(dt);
+  gameTime+=dt;updateTowers(dt);if(!mp.ready)enemyAI(dt);updateAge(dt);updateProjs(dt);updateFire(dt);
   if(Math.floor((gameTime-dt)/10)<Math.floor(gameTime/10))recordTimeline();
   // 僧侶治療：掃描附近受傷友軍並治療
   for(const u of units){if(u.type==='monk'&&u.hp>0&&u.state==='idle'){
@@ -3352,7 +3429,7 @@ window.__G={units,buildings,trees,bushes,stones,goldMines,sw,camT,issueCmd,selec
   mk:(x,y,type,team)=>{const u=makeUnit(x,y,type,team);units.push(u);return u;},
   cheat:o=>{wood+=o.wood||0;food+=o.food||0;stone+=o.stone||0;gold+=o.gold||0;
     woodEl.textContent=wood;foodEl.textContent=food;stoneEl.textContent=stone;goldEl.textContent=gold;},
-  age:()=>currentAge,tc,etc,techs,AGES,
+  age:()=>currentAge,tc,etc,techs,AGES,igniteFire,fires,
   setAge:a=>{currentAge=a;ageBadgeEl.textContent=AGES[a].icon+AGES[a].name;},
   setTime:t=>{gameTime=t;},
   charLib,loadGLB,SkeletonUtils,scene,mp,UNIT_DEFS,
