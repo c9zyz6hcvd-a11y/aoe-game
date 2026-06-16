@@ -1602,13 +1602,14 @@ function enemyWallOnSeg(x0,y0,x1,y1,team){
   }
   return best;
 }
+const SPEED_SCALE=0.7; // 全域行軍速度（大陸尺度：跨圖/過河更花時間，唔會幾分鐘行勻全中國）
 function mvUnit(v,dt){
   stepCooldown=Math.max(0,stepCooldown-dt);
   const dx=v.tx-v.x,dy=v.ty-v.y,d=Math.hypot(dx,dy);
   if(d>2){v.mv=1;
     const spd=v.type==='horseman'||v.type==='knight'?10:v.type==='catapult'?4:8;
     const prevWt=v.wt; v.wt+=dt*spd;
-    const s=Math.min(d,v.sp*dt);
+    const s=Math.min(d,v.sp*SPEED_SCALE*dt);
     const nx=v.x+dx/d*s,ny=v.y+dy/d*s;
     // 滑牆式碰撞：中心點永遠唔可以入任何完成建築嘅 rect（含 margin）→ 100% 封死
     if(!blockedAt(nx,ny)){
