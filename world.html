@@ -285,8 +285,8 @@ function updateDayNight(){
   scene.fog.color.copy(scene.background);
   sun.color.setHSL(.09,.5,.75+k*.2);
 }
-// ---- 地形：中國地勢（西高東低 · 黃河長江 · 東南入海）----
-// 遊玩平原 = 中原/華北（保持 y≈0，遊戲邏輯不變）；周邊塑造成中國地貌作背景。
+// ---- 地形：真實中國輪廓 + 三級階梯地勢（西高東低）----
+// 遊玩平原 = 華北/黃河流域（保持 y≈0，遊戲邏輯不變）；周邊 = 中國全境輪廓作背景。
 function _vn(x,z){const s=Math.sin(x*127.1+z*311.7)*43758.5453;return s-Math.floor(s);}
 function fbm(x,z){let a=0,amp=.5,f=1;for(let i=0;i<4;i++){
   const xi=Math.floor(x*f),zi=Math.floor(z*f),fx=x*f-xi,fz=z*f-zi;
@@ -297,37 +297,72 @@ function fbm(x,z){let a=0,amp=.5,f=1;for(let i=0;i<4;i++){
 function sstep(e0,e1,x){const t=Math.max(0,Math.min(1,(x-e0)/(e1-e0)));return t*t*(3-2*t);}
 const PLAIN={x0:0,x1:WORLD.w/S,z0:0,z1:WORLD.h/S}; // 遊玩平原 240 x 180
 const SEA_LEVEL=-1.3;
-function chinaH(wx,wz){
-  const dW=PLAIN.x0-wx, dE=wx-PLAIN.x1, dN=PLAIN.z0-wz, dS=wz-PLAIN.z1;
-  let h=0;
-  if(dW>0){ const t=sstep(0,235,dW); h+=t*58 + fbm(wx*.018+9,wz*.018)*t*60; } // 西：青藏高原+雪山
-  if(dN>0){ const t=sstep(0,170,dN); h+=t*15 + fbm(wx*.03,wz*.03+4)*t*18; }   // 北：黃土高原/草原
-  if(dE>0){ const coast=42+fbm(0,wz*.05)*26;                                   // 東：降到海岸入海
-            h += (dE<coast)? -sstep(0,coast,dE)*1.4 : SEA_LEVEL-2.6-sstep(coast,coast+150,dE)*9; }
-  if(dS>0){ const coast=54+fbm(wx*.04,0)*26;                                   // 南：東南入海
-            const sh=(dS<coast)? -sstep(0,coast,dS)*1.4 : SEA_LEVEL-2.6-sstep(coast,coast+150,dS)*9;
-            h=Math.min(h,sh); }
-  if(dW<=0&&dE<=0&&dN<=0&&dS<=0) h+=fbm(wx*.06,wz*.06)*.8; // 平原微起伏（保持 ≥0 = 綠草）
-  return h;
+// 經緯度 → 世界座標（等距投影 + 緯度壓縮）；華北平原對準遊玩區中心
+const KX=24.6,KZ=30,LON0=115.5,LAT0=36.5;
+function ll2w(lon,lat){return [(lon-LON0)*KX+120,(LAT0-lat)*KZ+90];}
+function w2lon(wx){return (wx-120)/KX+LON0;}
+function w2lat(wz){return LAT0-(wz-90)/KZ;}
+// 中國國界多邊形（簡化，順時針）
+const CN_BORDER=[[75,40],[80,45.2],[85,47.2],[91,46.5],[96,43],[100,42.6],[105,41.6],[110,42.8],[112,45],[116.5,49.5],[120,52.6],[123,53.5],[125,53],[127.5,50],[130,48.5],[134.5,48.3],[132,45.5],[131,44.8],[130.5,42.8],[128,41.8],[125,40.8],[122,40.3],[121.3,39],[118.5,38],[119,37.8],[122.7,37.4],[120.3,36],[120,34.5],[120.8,32.5],[121.9,31.4],[121.5,30.3],[122.3,29],[120,27],[119.6,25.5],[117.3,23.6],[116.5,22.9],[113.8,22.2],[111,21.5],[110,21.2],[108.5,21.5],[108,21.8],[106.7,22.8],[105.3,23.3],[103.3,22.7],[101.8,22.4],[101.1,21.2],[99.2,22.1],[97.5,23.9],[98.7,25.8],[97.5,28.3],[98.4,27.5],[96.2,29.1],[91.7,27.8],[88.8,27.3],[85,28.3],[81.4,30.4],[79,31.5],[78.2,32.5],[76,35.5],[74.5,37],[75,39]];
+function inCN(lon,lat){let c=false;const P=CN_BORDER;for(let i=0,j=P.length-1;i<P.length;j=i++){const xi=P[i][0],yi=P[i][1],xj=P[j][0],yj=P[j][1];if(((yi>lat)!=(yj>lat))&&(lon<(xj-xi)*(lat-yi)/(yj-yi)+xi))c=!c;}return c;}
+function distCN(lon,lat){let m=1e9;const P=CN_BORDER;for(let i=0,j=P.length-1;i<P.length;j=i++){const ax=P[j][0],ay=P[j][1],dx=P[i][0]-ax,dy=P[i][1]-ay,t=Math.max(0,Math.min(1,((lon-ax)*dx+(lat-ay)*dy)/(dx*dx+dy*dy||1))),px=ax+t*dx,py=ay+t*dy,d=Math.hypot(lon-px,lat-py);if(d<m)m=d;}return m;}
+function inHainan(lon,lat){const a=(lon-109.8)/1.35,b=(lat-19.2)/1.0;return a*a+b*b<1;}
+function _g(lon,lat,cx,cy,sx,sy){const a=(lon-cx)/sx,b=(lat-cy)/sy;return Math.exp(-(a*a+b*b));}
+function chinaElev(lon,lat){
+  let h=2.5;
+  h+=_g(lon,lat,87,33,15,8)*64;     // 青藏高原（大穹頂）
+  h+=_g(lon,lat,85,30,9,3)*26;      // 喜馬拉雅雪峰
+  h+=_g(lon,lat,82,42,8,3)*42;      // 天山
+  h+=_g(lon,lat,92,38,7,3)*30;      // 崑崙/祁連
+  h-=_g(lon,lat,83,40,5,2.5)*32;    // 塔里木盆地（沙漠低地）
+  h-=_g(lon,lat,89,44,4,2)*18;      // 準噶爾盆地
+  h+=_g(lon,lat,102,26,7,5)*24;     // 雲貴高原
+  h+=_g(lon,lat,109,37,8,4)*15;     // 黃土高原
+  h-=_g(lon,lat,105,30.5,3,2.5)*12; // 四川盆地（窪）
+  h*=1-0.55*sstep(112,120,lon);     // 東部平原壓低
+  return Math.max(0.5,h);
 }
-// ---- 地形 mesh（背景，視覺用；遊玩仍在 y=0 平面）----
-const TER={x0:-235,x1:WORLD.w/S+210,z0:-175,z1:WORLD.h/S+200};
+function _chinaSurf(wx,wz){
+  const lon=w2lon(wx),lat=w2lat(wz);
+  if(inHainan(lon,lat))return 2+_g(lon,lat,109.8,19.2,1.0,.8)*9; // 海南島
+  const land=inCN(lon,lat),d=distCN(lon,lat);
+  if(land){
+    let h=chinaElev(lon,lat);
+    const ct=sstep(0,.45,d); h=h*ct+0.3*(1-ct);   // 海岸帶降至近海平面
+    h+=fbm(wx*.04,wz*.04)*Math.min(9,h*.28);       // 起伏隨高度
+    return Math.max(0.25,h);
+  }
+  return SEA_LEVEL-0.4-sstep(0,2.2,d)*8;            // 離岸越遠越深
+}
+function chinaH(wx,wz){
+  const surf=_chinaSurf(wx,wz);
+  const ox=Math.max(0,PLAIN.x0-wx,wx-PLAIN.x1), oz=Math.max(0,PLAIN.z0-wz,wz-PLAIN.z1);
+  const pf=(1-sstep(0,34,ox))*(1-sstep(0,34,oz)); // 平原權重（外擴 34u 漸變）
+  const flat=fbm(wx*.06,wz*.06)*.8;
+  return surf*(1-pf)+flat*pf;                       // 平原內保持平坦綠
+}
+// ---- 地形 mesh ----
+const TER={x0:-930,x1:630,z0:-460,z1:655};
 {
-  const segX=210, segZ=190, row=segX+1;
+  const segX=232, segZ=166, row=segX+1;
   const pos=[],col=[],idx=[];
   const cLow=new THREE.Color(0x5e9341), cMid=new THREE.Color(0x7d7a3a),
         cHi=new THREE.Color(0x6e5a44), cRock=new THREE.Color(0x8a8076),
         cSnow=new THREE.Color(0xf2f4f7), cSand=new THREE.Color(0xc8b87e),
-        cSea=new THREE.Color(0x2f6aa8), cDeep=new THREE.Color(0x1d3f70), tmp=new THREE.Color();
+        cDesert=new THREE.Color(0xcfbd86),
+        cSea=new THREE.Color(0x2f6aa8), cDeep=new THREE.Color(0x14315c), tmp=new THREE.Color();
   for(let j=0;j<=segZ;j++)for(let i=0;i<=segX;i++){
     const wx=TER.x0+(TER.x1-TER.x0)*i/segX, wz=TER.z0+(TER.z1-TER.z0)*j/segZ;
     const y=chinaH(wx,wz); pos.push(wx,y,wz);
+    const lon=w2lon(wx),lat=w2lat(wz);
+    const desert=_g(lon,lat,83,40,7,3)+_g(lon,lat,104,42,11,4); // 塔里木 + 戈壁/內蒙
     if(y<SEA_LEVEL){ tmp.copy(cSea).lerp(cDeep, sstep(SEA_LEVEL,SEA_LEVEL-7,y)); }
-    else if(y<0){ tmp.copy(cSand).lerp(cLow, sstep(SEA_LEVEL,0,y)); } // 海岸沙灘
-    else if(y<18){ tmp.copy(cLow).lerp(cMid, sstep(3,18,y)); }        // 平原/丘陵綠
+    else if(y<0){ tmp.copy(cSand).lerp(cLow, sstep(SEA_LEVEL,0,y)); }     // 海岸沙灘
+    else if(desert>0.55&&y<24){ tmp.copy(cDesert).lerp(cMid, sstep(6,24,y)); } // 沙漠
+    else if(y<18){ tmp.copy(cLow).lerp(cMid, sstep(3,18,y)); }            // 平原/丘陵綠
     else if(y<40){ tmp.copy(cMid).lerp(cHi, sstep(18,40,y)); }
     else if(y<60){ tmp.copy(cHi).lerp(cRock, sstep(40,60,y)); }
-    else { tmp.copy(cRock).lerp(cSnow, sstep(58,80,y)); }
+    else { tmp.copy(cRock).lerp(cSnow, sstep(58,82,y)); }
     col.push(tmp.r,tmp.g,tmp.b);
   }
   for(let j=0;j<segZ;j++)for(let i=0;i<segX;i++){
@@ -342,29 +377,29 @@ const TER={x0:-235,x1:WORLD.w/S+210,z0:-175,z1:WORLD.h/S+200};
 }
 // ---- 海平面 ----
 {
-  const sea=new THREE.Mesh(new THREE.PlaneGeometry(900,820),
-    new THREE.MeshStandardMaterial({color:0x2f6aa8,roughness:.25,metalness:.1,transparent:true,opacity:.86}));
+  const sea=new THREE.Mesh(new THREE.PlaneGeometry(2200,1900),
+    new THREE.MeshStandardMaterial({color:0x2f6aa8,roughness:.25,metalness:.1,transparent:true,opacity:.85}));
   sea.rotation.x=-Math.PI/2; sea.position.set((TER.x0+TER.x1)/2, SEA_LEVEL, (TER.z0+TER.z1)/2);
   scene.add(sea);
 }
-// ---- 兩條大河（視覺絲帶，繞平原向東入海）----
-function addRiver(pts,width,color){
-  const curve=new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(p[0],.12,p[1])));
-  const n=80, positions=[],idx=[];
+// ---- 黃河、長江（依真實經緯度走向）----
+function addRiverLL(ll,width,color){
+  const curve=new THREE.CatmullRomCurve3(ll.map(p=>{const w=ll2w(p[0],p[1]);return new THREE.Vector3(w[0],.15,w[1]);}));
+  const n=120, positions=[],idx=[];
   for(let i=0;i<=n;i++){
     const t=i/n, p=curve.getPoint(t), tan=curve.getTangent(t);
     let nx=-tan.z, nz=tan.x; const len=Math.hypot(nx,nz)||1; nx/=len; nz/=len;
-    const w=width*(.6+.8*t); // 下游較闊
-    positions.push(p.x+nx*w, .12, p.z+nz*w, p.x-nx*w, .12, p.z-nz*w);
+    const w=width*(.5+.9*t);
+    positions.push(p.x+nx*w,.15,p.z+nz*w, p.x-nx*w,.15,p.z-nz*w);
   }
   for(let i=0;i<n;i++){const a=i*2;idx.push(a,a+1,a+2, a+2,a+1,a+3);}
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   geo.setIndex(idx); geo.computeVertexNormals();
-  scene.add(new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color,roughness:.2,metalness:.1,transparent:true,opacity:.9})));
+  scene.add(new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color,roughness:.2,metalness:.1,transparent:true,opacity:.92})));
 }
-addRiver([[-120,30],[-20,5],[60,-8],[150,-4],[235,12],[330,40]], 3.2, 0x6f86a8);  // 黃河（北）
-addRiver([[-120,150],[-10,168],[90,184],[180,186],[260,172],[340,205]], 3.6, 0x4f79b0); // 長江（南）
+addRiverLL([[96,34],[100,35.3],[103.5,36.1],[107,37.6],[110.3,40.3],[111.2,40.5],[110.5,37.5],[110.3,35],[112,34.8],[114.5,35.3],[116.5,36],[118.8,37.6]], 4, 0xb89a5a);   // 黃河（黃濁）
+addRiverLL([[91,33],[97,32.2],[100.5,28],[104,28.8],[106.5,29.6],[108.8,30.3],[111.5,30.2],[114.3,30.6],[117.5,31.5],[120,31.8],[121.8,31.4]], 4.5, 0x4f79b0); // 長江
 // 草叢點綴（只在平原）
 {const g=new THREE.ConeGeometry(.5,1.1,5),m=new THREE.MeshStandardMaterial({color:0x4d7d33,roughness:1});
  for(let i=0;i<120;i++){const t=new THREE.Mesh(g,m);
@@ -1351,9 +1386,11 @@ function setMapView(on){
   const cx=(TER.x0+TER.x1)/2, cz=(TER.z0+TER.z1)/2;
   if(on){
     _mvFov=camera.fov;_mvFar=camera.far;_mvFogN=scene.fog.near;_mvFogF=scene.fog.far;
-    camera.fov=48;camera.far=2400;camera.updateProjectionMatrix();
-    scene.fog.near=1000;scene.fog.far=2800;
-    camera.position.set(cx,560,cz+640);camera.lookAt(cx,30,cz-10);
+    const w=TER.x1-TER.x0,d=TER.z1-TER.z0,span=Math.max(w,d*1.35);
+    const dist=span/(2*Math.tan(48*Math.PI/360))*1.08;
+    camera.fov=48;camera.far=dist*3.5;camera.updateProjectionMatrix();
+    scene.fog.near=dist*1.6;scene.fog.far=dist*3.4;
+    camera.position.set(cx,dist*.92,cz+dist*.6);camera.lookAt(cx,30,cz);
     showStatus('🗺️ 中國全圖 — 再按 M / 點按鈕返回戰場');
   }else{
     camera.fov=_mvFov;camera.far=_mvFar;camera.updateProjectionMatrix();
