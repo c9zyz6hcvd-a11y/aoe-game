@@ -111,6 +111,8 @@
   background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #4090d0;">🌐 對戰</div>
 <div id="codexBtn" onclick="openCodex()" style="position:fixed;top:116px;right:8px;color:#ffd27a;font-size:12px;font-weight:bold;
   background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #c0902f;">📖 圖鑑</div>
+<div id="mapBtn" onclick="toggleMapView()" style="position:fixed;top:152px;right:8px;color:#9be29b;font-size:12px;font-weight:bold;
+  background:rgba(0,0,0,.6);padding:5px 12px;border-radius:20px;cursor:pointer;z-index:5;border:1px solid #4caf50;">🗺️ 地圖 (M)</div>
 <div id="codex" style="display:none;position:fixed;inset:0;background:rgba(8,10,14,.94);z-index:350;overflow-y:auto;color:#eee;">
   <div style="max-width:1000px;margin:0 auto;padding:18px 16px 60px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -1342,7 +1344,27 @@ document.getElementById('minimap').addEventListener('click',e=>{const r=mc.getBo
   clampCam();updateCamera();});
 // ---- 鍵盤 ----
 const keys={};
+// ---- 🗺️ 戰略地圖視角（睇成個中國）----
+let _mapView=false,_mvFov=45,_mvFar=1600,_mvFogN=380,_mvFogF=950;
+function setMapView(on){
+  _mapView=on; window.__freecam=on;
+  const cx=(TER.x0+TER.x1)/2, cz=(TER.z0+TER.z1)/2;
+  if(on){
+    _mvFov=camera.fov;_mvFar=camera.far;_mvFogN=scene.fog.near;_mvFogF=scene.fog.far;
+    camera.fov=48;camera.far=2400;camera.updateProjectionMatrix();
+    scene.fog.near=1000;scene.fog.far=2800;
+    camera.position.set(cx,560,cz+640);camera.lookAt(cx,30,cz-10);
+    showStatus('🗺️ 中國全圖 — 再按 M / 點按鈕返回戰場');
+  }else{
+    camera.fov=_mvFov;camera.far=_mvFar;camera.updateProjectionMatrix();
+    scene.fog.near=_mvFogN;scene.fog.far=_mvFogF;
+    updateCamera();showStatus('返回戰場');
+  }
+}
+window.toggleMapView=()=>setMapView(!_mapView);
 addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('codex').style.display==='block'){closeCodex();return;}
+  if((e.key==='m'||e.key==='M')&&!placingType){toggleMapView();return;}
+  if(e.key==='Escape'&&_mapView){setMapView(false);return;}
   if(e.key==='Escape'&&placingType){placingType=null;showStatus('已取消');playClick();return;}keys[e.key]=1;
   if(e.key==='a'||e.key==='A'){selectedBldg=null;units.forEach(u=>{if(u.team===MYTEAM&&u.type==='villager')u.sel=1;});
     showStatus(`全選 ${units.filter(u=>u.team===MYTEAM&&u.type==='villager').length}村民`);}
