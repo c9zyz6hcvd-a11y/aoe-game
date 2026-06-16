@@ -340,9 +340,10 @@ function chinaH(wx,wz){
   const surf=_chinaSurf(wx,wz);
   const ox=Math.max(0,PLAIN.x0-wx,wx-PLAIN.x1), oz=Math.max(0,PLAIN.z0-wz,wz-PLAIN.z1);
   const pf=(1-sstep(0,34,ox))*(1-sstep(0,34,oz)); // 平原權重（外擴 34u 漸變）
-  const flat=fbm(wx*.06,wz*.06)*.8;
-  return surf*(1-pf)+flat*pf;                       // 平原內保持平坦綠
+  const flat=fbm(wx*.05,wz*.05)*3 + sstep(64,182,wz)*fbm(wx*.03+5,wz*.03)*15; // 北平原微丘 + 南部丘陵起伏
+  return surf*(1-pf)+flat*pf;
 }
+function terrainY(x,y){return chinaH(x/S,y/S);}     // 邏輯座標(x,y) → 地形高度（視覺用，A* 不受影響）
 // ---- 地形 mesh ----
 const TER={x0:-930,x1:630,z0:-460,z1:655};
 {
@@ -2271,7 +2272,7 @@ function upGrpLabels(){
     if(g.length)h+=`<span class="gl has">${i}:${g.length}</span>`;}
   grpLabelsEl.innerHTML=h;}
 // ================= 3D 建模 =================
-function place(m,wx,wy){m.position.set(wx/S,0,wy/S);}
+function place(m,wx,wy){m.position.set(wx/S,terrainY(wx,wy),wy/S);}
 function leafMat(base){const c=new THREE.Color(base);
   c.offsetHSL((Math.random()-.5)*.04,(Math.random()-.5)*.1,(Math.random()-.5)*.06);
   return new THREE.MeshStandardMaterial({color:c,roughness:.95,metalness:0});}
@@ -2797,7 +2798,7 @@ function syncScene(dt,now){
   for(const u of units){
     if(!u.mesh){u.mesh=makeUnitMesh(u);scene.add(u.mesh);}
     const m=u.mesh;
-    m.position.set(u.x/S,0,u.y/S);
+    m.position.set(u.x/S,terrainY(u.x,u.y),u.y/S);
     if(u.dir!==undefined){const cur=m.rotation.y;let d=u.dir-cur;
       while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;
       m.rotation.y=cur+d*Math.min(1,dt*12);}
