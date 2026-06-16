@@ -251,7 +251,7 @@ const camera=new THREE.PerspectiveCamera(45,1,1,1600);
 function resize(){W=innerWidth;H=innerHeight;renderer.setSize(W,H);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
   camera.aspect=W/H;camera.updateProjectionMatrix();ov.width=W;ov.height=H;}
 addEventListener('resize',resize);resize();
-const camT={x:(WORLD.w/2-230)/S,z:WORLD.h/2/S};let camDist=75;
+const camT={x:(WORLD.w/2-230)/S,z:WORLD.h/2/S};let camDist=125;
 function updateCamera(){
   if(window.__freecam)return; // 除錯：自由鏡頭時唔覆寫
   camera.position.set(camT.x,camDist*.92,camT.z+camDist*.62);
@@ -1293,7 +1293,7 @@ function proj(wx,wy,h=0){_v3.set(wx/S,h,wy/S).project(camera);
   return{x:(_v3.x+1)/2*W,y:(-_v3.y+1)/2*H,vis:_v3.z<1};}
 // ---- 行動裝置 ----
 const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||window.innerWidth<768;
-if(isMobile){camDist=110;updateCamera();}
+if(isMobile){camDist=150;updateCamera();}
 function selectAllVils(){units.forEach(u=>{u.sel=u.team===MYTEAM&&u.type==='villager'?1:0;});selectedBldg=null;showStatus('全選村民');}
 function selectAllMil(){units.forEach(u=>{u.sel=u.team===MYTEAM&&u.type!=='villager'?1:0;});selectedBldg=null;showStatus('全選士兵');}
 function escAction(){units.forEach(u=>u.sel=0);selectedBldg=null;showStatus('取消');}
@@ -2796,7 +2796,7 @@ function syncScene(dt,now){
   updateSmokes(dt);
   // 單位
   for(const u of units){
-    if(!u.mesh){u.mesh=makeUnitMesh(u);scene.add(u.mesh);}
+    if(!u.mesh){u.mesh=makeUnitMesh(u);u.mesh.scale.setScalar(0.62);scene.add(u.mesh);} // 縮細人物對地圖比例
     const m=u.mesh;
     m.position.set(u.x/S,terrainY(u.x,u.y),u.y/S);
     if(u.dir!==undefined){const cur=m.rotation.y;let d=u.dir-cur;
