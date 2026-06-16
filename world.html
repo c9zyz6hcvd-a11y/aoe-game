@@ -340,7 +340,11 @@ function chinaH(wx,wz){
   const surf=_chinaSurf(wx,wz);
   const ox=Math.max(0,PLAIN.x0-wx,wx-PLAIN.x1), oz=Math.max(0,PLAIN.z0-wz,wz-PLAIN.z1);
   const pf=(1-sstep(0,34,ox))*(1-sstep(0,34,oz)); // 平原權重（外擴 34u 漸變）
-  const flat=fbm(wx*.05,wz*.05)*3 + sstep(64,182,wz)*fbm(wx*.03+5,wz*.03)*15; // 北平原微丘 + 南部丘陵起伏
+  const flat=fbm(wx*.05,wz*.05)*3                            // 北平原微丘
+    + sstep(64,182,wz)*fbm(wx*.03+5,wz*.03)*15               // 南部丘陵
+    + sstep(38,0,wx)*(26+fbm(wx*.08,wz*.06)*30)              // 西邊太行山（華北平原西屏障）
+    + sstep(150,182,wz)*(12+fbm(wx*.07+3,wz*.07)*24)         // 南緣山地加強
+    + sstep(22,0,wz)*(10+fbm(wx*.07,wz*.08+2)*16);           // 北邊燕山
   return surf*(1-pf)+flat*pf;
 }
 function terrainY(x,y){return chinaH(x/S,y/S);}     // 邏輯座標(x,y) → 地形高度（視覺用，A* 不受影響）
