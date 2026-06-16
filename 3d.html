@@ -1965,7 +1965,7 @@ function _getThumbR(){if(_thumbR)return _thumbR;
   _thumbR=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
   _thumbR.setSize(196,196);_thumbR.setPixelRatio(1);_thumbR.shadowMap.enabled=false;
   if(THREE.SRGBColorSpace)_thumbR.outputColorSpace=THREE.SRGBColorSpace;return _thumbR;}
-function _captureThumb(obj,ang,tilt){
+function _captureThumb(obj,ang,tilt,distMul,lookBias){
   const r=_getThumbR();const sc=new THREE.Scene();
   sc.add(new THREE.HemisphereLight(0xffffff,0x55654a,1.15));
   const d1=new THREE.DirectionalLight(0xfff2d8,1.6);d1.position.set(4,7,5);sc.add(d1);
@@ -1974,15 +1974,18 @@ function _captureThumb(obj,ang,tilt){
   const box=new THREE.Box3().setFromObject(obj);if(box.isEmpty()){sc.remove(obj);return null;}
   const sz=box.getSize(new THREE.Vector3()),ctr=box.getCenter(new THREE.Vector3());
   const maxd=Math.max(sz.x,sz.y,sz.z)||1;const cam=new THREE.PerspectiveCamera(30,1,.05,3000);
-  const dist=maxd*2.1;cam.position.set(ctr.x+Math.sin(ang)*dist,ctr.y+maxd*(tilt||.32),ctr.z+Math.cos(ang)*dist);
-  cam.lookAt(ctr.x,ctr.y-maxd*.05,ctr.z);r.render(sc,cam);
+  const dist=maxd*(distMul||2.1);cam.position.set(ctr.x+Math.sin(ang)*dist,ctr.y+maxd*(tilt||.32),ctr.z+Math.cos(ang)*dist);
+  cam.lookAt(ctr.x,ctr.y-maxd*(lookBias!=null?lookBias:.05),ctr.z);r.render(sc,cam);
   const url=r.domElement.toDataURL('image/png');sc.remove(obj);return url;
 }
 function _unitThumb(k){
   const fu={type:k,team:'player',i:1,hp:10,mh:10,dir:0,sz:20,gi:.4,wt:0,cs:0};
   const m=makeUnitMesh(fu);if(m.userData.ring)m.userData.ring.visible=false;
+  m.traverse(o=>{if(o.userData&&o.userData.roleMark)o.visible=false;}); // 收起頭頂徽記(太高令模型睇落細)
   [fu.mixer,fu.mixH,fu.mixR].forEach(mx=>{if(mx)mx.update(.45);});
-  return _captureThumb(m,0.7,.34);
+  const mounted=(k==='horseman'||k==='knight');
+  // 騎乘：個矛/馬令 bbox 變大 → 收近啲、睇低啲 frame 住馬同騎手
+  return mounted?_captureThumb(m,0.7,.12,1.5,.22):_captureThumb(m,0.7,.34);
 }
 function _buildThumb(k){
   const def=BUILD_DEFS[k];
@@ -2413,10 +2416,11 @@ function makeGLBUnit(u){
 function makeMountedGLB(u){
   const en=u.team==='enemy';const isKnight=u.type==='knight';
   const g=new THREE.Group();const body=new THREE.Group();g.add(body);g.userData.body=body;
-  // 馬
+  // 馬（放大：馬本來相對騎手細，HM 倍放大，騎手保持步兵大小坐高啲）
+  const HM=1.32;
   const h=SkeletonUtils.clone(horseLib.scene);
-  h.scale.setScalar(horseLib.scale);
-  h.position.set(horseLib.off.x,horseLib.off.y,horseLib.off.z);
+  h.scale.setScalar(horseLib.scale*HM);
+  h.position.set(horseLib.off.x*HM,horseLib.off.y*HM,horseLib.off.z*HM);
   h.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
     m.material=m.material.clone();
     if(en&&m.material.color)m.material.color.lerp(new THREE.Color(0xc03030),.3);
@@ -2424,9 +2428,10 @@ function makeMountedGLB(u){
   const hw=new THREE.Group();hw.add(h);body.add(hw);g.userData.horseW=hw;
   u.mixH=new THREE.AnimationMixer(h);
   if(horseLib.clips[0]){u.actH=u.mixH.clipAction(horseLib.clips[0]);u.actH.play();u.mixH.timeScale=0;}
-  // 鞍 + 氈
-  const bk=box(1.0,.1,1.26,isKnight?0xc8a030:(en?0x8a2828:0x28508a));bk.position.set(0,1.82,-.43);body.add(bk);
-  const sd=box(.72,.15,.82,0x4a3a26);sd.position.set(0,1.92,-.43);body.add(sd);
+  // 鞍 + 氈（跟住大馬升高 + 闊啲）
+  const lift=1.82*(HM-1); // 馬背升高量
+  const bk=box(1.0,.1,1.26,isKnight?0xc8a030:(en?0x8a2828:0x28508a));bk.scale.set(HM,1,HM);bk.position.set(0,1.82+lift,-.43);body.add(bk);
+  const sd=box(.72,.15,.82,0x4a3a26);sd.scale.set(HM,1,HM);sd.position.set(0,1.92+lift,-.43);body.add(sd);
   // 騎手模型：騎士=Knight(甲)、騎兵=Barbarian(裸上身)→ 兩者明顯唔同
   const lib=isKnight?charLib.swordsman:(charLib.villager||charLib.swordsman);
   const r=SkeletonUtils.clone(lib.scene);
@@ -2434,7 +2439,7 @@ function makeMountedGLB(u){
   r.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;
     if(en||isKnight){m.material=m.material.clone();
       if(m.material.color)m.material.color.lerp(new THREE.Color(en?0xc03030:0xc8a030),en?.3:.22);}}});
-  r.position.set(0,1.6,-.43);
+  r.position.set(0,1.6+lift,-.43); // 騎手跟住大馬坐高
   body.add(r);
   u.mixR=new THREE.AnimationMixer(r);
   const cl=lib.clips;
