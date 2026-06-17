@@ -434,6 +434,18 @@ addRiverLL([[91,33],[97,32.2],[100.5,28],[104,28.8],[106.5,29.6],[108.8,30.3],[1
  for(let i=0;i<120;i++){const t=new THREE.Mesh(g,m);
    t.position.set(Math.random()*WORLD.w/S,.4,Math.random()*WORLD.h/S);
    t.rotation.y=Math.random()*7;t.scale.setScalar(.6+Math.random()*.9);scene.add(t);}}
+// 山坡針葉林（裝飾，純視覺）：森林化太行山等山地，破光禿感
+{const trunkG=new THREE.CylinderGeometry(.18,.28,1.2,5), trunkM=new THREE.MeshStandardMaterial({color:0x5e4327,roughness:1}),
+   coneA=new THREE.ConeGeometry(1.0,1.7,6), coneB=new THREE.ConeGeometry(.66,1.2,6), leafM=new THREE.MeshStandardMaterial({color:0x2f6b34,roughness:1});
+ let placed=0,tries=0;
+ while(placed<200&&tries<3000){tries++;
+   const wx=TER.x0+Math.random()*(TER.x1-TER.x0), wz=TER.z0+Math.random()*(TER.z1-TER.z0), y=chinaH(wx,wz);
+   if(y<7||y>46)continue;                                 // 只喺山坡/丘陵(唔喺水/平原/雪峰)
+   const g=new THREE.Group();
+   const tr=new THREE.Mesh(trunkG,trunkM);tr.position.y=.6;g.add(tr);
+   const c1=new THREE.Mesh(coneA,leafM);c1.position.y=1.7;const c2=new THREE.Mesh(coneB,leafM);c2.position.y=2.7;g.add(c1);g.add(c2);
+   g.position.set(wx,y,wz);g.rotation.y=Math.random()*7;g.scale.setScalar(.7+Math.random()*.8);
+   scene.add(g);placed++;}}
 // ---- 材質小工具 ----
 const M={};function mat(c){if(!M[c])M[c]=new THREE.MeshStandardMaterial({color:c,roughness:.85,metalness:0});return M[c];}
 const MM={};function matM(c){if(!MM[c])MM[c]=new THREE.MeshStandardMaterial({color:c,roughness:.35,metalness:.7});return MM[c];}
