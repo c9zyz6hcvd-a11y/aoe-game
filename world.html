@@ -391,7 +391,8 @@ const TER={x0:-930,x1:630,z0:-460,z1:655};
     else if(y<40){ tmp.copy(cMid).lerp(cHi, sstep(18,40,y)); }
     else if(y<60){ tmp.copy(cHi).lerp(cRock, sstep(40,60,y)); }
     else { tmp.copy(cRock).lerp(cSnow, sstep(58,82,y)); }
-    col.push(tmp.r,tmp.g,tmp.b);
+    const cn=y<SEA_LEVEL?1:(0.9+0.2*fbm(wx*.35,wz*.35)); // 陸地加細微色差，破平板感（海面唔加）
+    col.push(tmp.r*cn,tmp.g*cn,tmp.b*cn);
   }
   for(let j=0;j<segZ;j++)for(let i=0;i<segX;i++){
     const a=j*row+i,b=a+1,c=a+row,d=c+1; idx.push(a,c,b, b,c,d);
