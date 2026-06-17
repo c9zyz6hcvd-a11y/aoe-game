@@ -299,11 +299,12 @@ function fbm(x,z){let a=0,amp=.5,f=1;for(let i=0;i<4;i++){
 function sstep(e0,e1,x){const t=Math.max(0,Math.min(1,(x-e0)/(e1-e0)));return t*t*(3-2*t);}
 const PLAIN={x0:0,x1:WORLD.w/S,z0:0,z1:WORLD.h/S}; // 遊玩平原 240 x 180
 const SEA_LEVEL=-1.3;
-// 經緯度 → 世界座標（等距投影 + 緯度壓縮）；華北平原對準遊玩區中心
-const KX=24.6,KZ=30,LON0=115.5,LAT0=36.5;
+// 經緯度 → 世界座標：整個中國填滿可玩世界(0..240×0..180)；中國中心對準世界中心
+const KX=3.75,KZ=4.64,LON0=104.5,LAT0=36.25;
 function ll2w(lon,lat){return [(lon-LON0)*KX+120,(LAT0-lat)*KZ+90];}
 function w2lon(wx){return (wx-120)/KX+LON0;}
 function w2lat(wz){return LAT0-(wz-90)/KZ;}
+function isLand(x,y){const lon=w2lon(x/S),lat=w2lat(y/S);return inCN(lon,lat)||inHainan(lon,lat);} // 邏輯座標係咪喺陸地
 // 中國國界多邊形（簡化，順時針）
 const CN_BORDER=[[75,40],[80,45.2],[85,47.2],[91,46.5],[96,43],[100,42.6],[105,41.6],[110,42.8],[112,45],[116.5,49.5],[120,52.6],[123,53.5],[125,53],[127.5,50],[130,48.5],[134.5,48.3],[132,45.5],[131,44.8],[130.5,42.8],[128,41.8],[125,40.8],[122,40.3],[121.3,39],[118.5,38],[119,37.8],[122.7,37.4],[120.3,36],[120,34.5],[120.8,32.5],[121.9,31.4],[121.5,30.3],[122.3,29],[120,27],[119.6,25.5],[117.3,23.6],[116.5,22.9],[113.8,22.2],[111,21.5],[110,21.2],[108.5,21.5],[108,21.8],[106.7,22.8],[105.3,23.3],[103.3,22.7],[101.8,22.4],[101.1,21.2],[99.2,22.1],[97.5,23.9],[98.7,25.8],[97.5,28.3],[98.4,27.5],[96.2,29.1],[91.7,27.8],[88.8,27.3],[85,28.3],[81.4,30.4],[79,31.5],[78.2,32.5],[76,35.5],[74.5,37],[75,39]];
 function inCN(lon,lat){let c=false;const P=CN_BORDER;for(let i=0,j=P.length-1;i<P.length;j=i++){const xi=P[i][0],yi=P[i][1],xj=P[j][0],yj=P[j][1];if(((yi>lat)!=(yj>lat))&&(lon<(xj-xi)*(lat-yi)/(yj-yi)+xi))c=!c;}return c;}
@@ -336,17 +337,7 @@ function _chinaSurf(wx,wz){
   }
   return SEA_LEVEL-0.4-sstep(0,2.2,d)*8;            // 離岸越遠越深
 }
-function chinaH(wx,wz){
-  const surf=_chinaSurf(wx,wz);
-  const ox=Math.max(0,PLAIN.x0-wx,wx-PLAIN.x1), oz=Math.max(0,PLAIN.z0-wz,wz-PLAIN.z1);
-  const pf=(1-sstep(0,34,ox))*(1-sstep(0,34,oz)); // 平原權重（外擴 34u 漸變）
-  const flat=fbm(wx*.05,wz*.05)*3                            // 北平原微丘
-    + sstep(64,182,wz)*fbm(wx*.03+5,wz*.03)*15               // 南部丘陵
-    + sstep(38,0,wx)*(26+fbm(wx*.08,wz*.06)*30)              // 西邊太行山（華北平原西屏障）
-    + sstep(150,182,wz)*(12+fbm(wx*.07+3,wz*.07)*24)         // 南緣山地加強
-    + sstep(22,0,wz)*(10+fbm(wx*.07,wz*.08+2)*16);           // 北邊燕山
-  return surf*(1-pf)+flat*pf;
-}
+function chinaH(wx,wz){return _chinaSurf(wx,wz);} // 整個世界 = 真實中國地貌（陸/海/山/河谷）
 function terrainY(x,y){return chinaH(x/S,y/S);}     // 邏輯座標(x,y) → 地形高度（視覺用，A* 不受影響）
 // ---- play area 內嘅河（可見 + 不可通行）；行北/南帶，唔切斷中間玩家↔敵人通道 ----
 const RIVER_HW=42; // 河半闊(logical px)
@@ -367,10 +358,9 @@ function addPlayRiver(path,width,color){
   const mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color,roughness:.16,metalness:.1,transparent:true,opacity:.92,side:THREE.DoubleSide}));
   scene.add(mesh); playRivers.push({mesh,phase:Math.random()*6.28});
 }
-addPlayRiver(RIVER_PATHS[0],128,0xcaa23c); // 黃河（黃濁，加闊加亮易見）
-addPlayRiver(RIVER_PATHS[1],138,0x3f86d6); // 長江（藍）
+void addPlayRiver; // 舊「平原盒」河已停用（全中國重映射後改用 addRiverLL 真經緯度河）
 // ---- 地形 mesh ----
-const TER={x0:-930,x1:630,z0:-460,z1:655};
+const TER={x0:-15,x1:255,z0:-15,z1:195}; // = 可玩世界(0..240×0..180)+海岸margin；整個中國喺呢個範圍
 {
   const segX=232, segZ=166, row=segX+1;
   const pos=[],col=[],idx=[];
@@ -406,7 +396,7 @@ const TER={x0:-930,x1:630,z0:-460,z1:655};
 }
 // ---- 海平面 ----
 {
-  const sea=new THREE.Mesh(new THREE.PlaneGeometry(2200,1900),
+  const sea=new THREE.Mesh(new THREE.PlaneGeometry(440,380),
     new THREE.MeshStandardMaterial({color:0x2f6aa8,roughness:.25,metalness:.1,transparent:true,opacity:.85}));
   sea.rotation.x=-Math.PI/2; sea.position.set((TER.x0+TER.x1)/2, SEA_LEVEL, (TER.z0+TER.z1)/2);
   scene.add(sea);
@@ -419,7 +409,8 @@ function addRiverLL(ll,width,color){
     const t=i/n, p=curve.getPoint(t), tan=curve.getTangent(t);
     let nx=-tan.z, nz=tan.x; const len=Math.hypot(nx,nz)||1; nx/=len; nz/=len;
     const w=width*(.5+.9*t);
-    positions.push(p.x+nx*w,.15,p.z+nz*w, p.x-nx*w,.15,p.z-nz*w);
+    const ax=p.x+nx*w,az=p.z+nz*w,bx=p.x-nx*w,bz=p.z-nz*w;
+    positions.push(ax,terrainY(ax*S,az*S)+0.3,az, bx,terrainY(bx*S,bz*S)+0.3,bz);
   }
   for(let i=0;i<n;i++){const a=i*2;idx.push(a,a+1,a+2, a+2,a+1,a+3);}
   const geo=new THREE.BufferGeometry();
@@ -815,8 +806,9 @@ function doResearch(key){
   showStatus('🔬 研究：'+t.name);playClick();
 }
 // ---- TC ----
-const tc={x:WORLD.w/2-280,y:WORLD.h/2-40,w:100,h:100,hp:1000,mh:1000,team:'player'};
-const etc={x:WORLD.w-250,y:WORLD.h/2-40,w:100,h:100,hp:1000,mh:1000,team:'enemy'};
+const _pTC=ll2w(113,35),_eTC=ll2w(119,30.5); // 玩家=中原(黃河中游)，敵人=江南(長江下游)
+const tc={x:_pTC[0]*S-50,y:_pTC[1]*S-50,w:100,h:100,hp:1000,mh:1000,team:'player'};
+const etc={x:_eTC[0]*S-50,y:_eTC[1]*S-50,w:100,h:100,hp:1000,mh:1000,team:'enemy'};
 // 時間線數據 (每10秒記錄)
 const timeline=[];
 function recordTimeline(){
@@ -921,6 +913,7 @@ const TREE_R=22;const trees=[];
   for(const[bx,by,bw,bh]of zs){for(let i=0;i<4+Math.random()*4;i++){let ok=0,x,y,t=0;
     while(!ok&&t++<30){x=bx+Math.random()*bw;y=by+Math.random()*bh;
       if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
+      if(!isLand(x,y))continue; // 只喺陸地生資源
       if(Math.hypot(x-(tc.x+50),y-(tc.y+50))<150||Math.hypot(x-(etc.x+50),y-(etc.y+50))<150)continue;
       ok=trees.every(t=>Math.hypot(t.x-x,t.y-y)>TREE_R*2.2);}
     if(ok)trees.push({x,y,r:TREE_R,res:80,mr:80,type:'wood',st:0,rt:0});}}})();
@@ -929,6 +922,7 @@ const BUSH_R=18;const bushes=[];
   for(const[bx,by,bw,bh]of zs){for(let i=0;i<3+Math.random()*3;i++){let ok=0,x,y,t=0;
     while(!ok&&t++<30){x=bx+Math.random()*bw;y=by+Math.random()*bh;
       if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
+      if(!isLand(x,y))continue; // 只喺陸地生資源
       if(Math.hypot(x-(tc.x+50),y-(tc.y+50))<120||Math.hypot(x-(etc.x+50),y-(etc.y+50))<120)continue;
       ok=[...trees,...bushes].every(t=>Math.hypot(t.x-x,t.y-y)>BUSH_R*2.5);}
     if(ok)bushes.push({x,y,r:BUSH_R,res:60,mr:60,type:'food',st:0,rt:0});}}})();
@@ -937,6 +931,7 @@ const STONE_R=18;const stones=[];
   for(const[bx,by,bw,bh]of zs){for(let i=0;i<2+Math.random()*2;i++){let ok=0,x,y,t=0;
     while(!ok&&t++<30){x=bx+Math.random()*bw;y=by+Math.random()*bh;
       if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
+      if(!isLand(x,y))continue; // 只喺陸地生資源
       ok=[...trees,...bushes,...stones].every(t=>Math.hypot(t.x-x,t.y-y)>STONE_R*2.5);}
     if(ok)stones.push({x,y,r:STONE_R,res:80,mr:80,type:'stone',st:0,rt:0});}}})();
 const GOLD_R=18;const goldMines=[];
@@ -944,6 +939,7 @@ const GOLD_R=18;const goldMines=[];
   for(const[bx,by,bw,bh]of zs){for(let i=0;i<2+Math.floor(Math.random()*2);i++){let ok=0,x,y,t=0;
     while(!ok&&t++<30){x=bx+Math.random()*bw;y=by+Math.random()*bh;
       if(x<20||y<20||x>WORLD.w-20||y>WORLD.h-20)continue;
+      if(!isLand(x,y))continue; // 只喺陸地生資源
       ok=[...trees,...bushes,...stones,...goldMines].every(o=>Math.hypot(o.x-x,o.y-y)>GOLD_R*2.5);}
     if(ok)goldMines.push({x,y,r:GOLD_R,res:100,mr:100,type:'gold',st:0,rt:0});}}})();
 function regrowResources(dt){
@@ -1290,9 +1286,10 @@ function isRiver(x,y){return riverCells.has((~~(x/PF))+','+(~~(y/PF)));}
 // 高山格（靜態）：太行山等高地 = 不可越天然屏障（只 block terrainY>40，即極西一條山脊）
 const mountainCells=(()=>{const s=new Set();for(let gx=0;gx<PFG;gx++)for(let gy=0;gy<PFR;gy++){const cx=gx*PF+PF/2,cy=gy*PF+PF/2;if(terrainY(cx,cy)>40)s.add(gx+','+gy);}return s;})();
 function isMountain(x,y){return mountainCells.has((~~(x/PF))+','+(~~(y/PF)));}
+// 海格（靜態）：唔係陸地嘅格 = 不可通行（海洋＝天然邊界，整塊中國陸地相連可達）
+const seaCells=(()=>{const s=new Set();for(let gx=0;gx<PFG;gx++)for(let gy=0;gy<PFR;gy++){if(!isLand(gx*PF+PF/2,gy*PF+PF/2))s.add(gx+','+gy);}return s;})();
 function blockedSet(){
-  const s=new Set(riverCells);
-  for(const c of mountainCells)s.add(c);
+  const s=new Set(seaCells);
   const markBox=(x0,y0,x1,y1)=>{
     const gx0=Math.max(0,~~(x0/PF)),gx1=Math.min(PFG-1,~~(x1/PF)),
           gy0=Math.max(0,~~(y0/PF)),gy1=Math.min(PFR-1,~~(y1/PF));
@@ -1583,8 +1580,7 @@ function camKeys(dt){const v=camDist*.9*dt;let mx=0,mz=0;
 // 單位中心點唔可以入任何完成建築嘅 rect（margin 令相鄰城牆 rect 重疊 → 封死縫隙）
 function blockedAt(x,y){
   const m=2;
-  if(isRiver(x,y))return true; // 河面不可行（渡口除外）→ 連續移動都過唔到，要繞渡口
-  if(isMountain(x,y))return true; // 高山不可越（連續移動）
+  if(!isLand(x,y))return true; // 海洋不可行（天然邊界）
   for(const b of buildings){
     if(!b.complete||b.hp<=0)continue;
     if(x>b.x-m&&x<b.x+b.w+m&&y>b.y-m&&y<b.y+b.h+m)return true;
