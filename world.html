@@ -311,18 +311,30 @@ function inCN(lon,lat){let c=false;const P=CN_BORDER;for(let i=0,j=P.length-1;i<
 function distCN(lon,lat){let m=1e9;const P=CN_BORDER;for(let i=0,j=P.length-1;i<P.length;j=i++){const ax=P[j][0],ay=P[j][1],dx=P[i][0]-ax,dy=P[i][1]-ay,t=Math.max(0,Math.min(1,((lon-ax)*dx+(lat-ay)*dy)/(dx*dx+dy*dy||1))),px=ax+t*dx,py=ay+t*dy,d=Math.hypot(lon-px,lat-py);if(d<m)m=d;}return m;}
 function inHainan(lon,lat){const a=(lon-109.8)/1.35,b=(lat-19.2)/1.0;return a*a+b*b<1;}
 function _g(lon,lat,cx,cy,sx,sy){const a=(lon-cx)/sx,b=(lat-cy)/sy;return Math.exp(-(a*a+b*b));}
+function _ridge(lon,lat,x0,y0,x1,y1,w){const dx=x1-x0,dy=y1-y0,L=dx*dx+dy*dy||1;let t=((lon-x0)*dx+(lat-y0)*dy)/L;t=Math.max(0,Math.min(1,t));const d=Math.hypot(lon-(x0+t*dx),lat-(y0+t*dy));return Math.max(0,1-d/w);} // 線狀山脈
+function _plat(lon,lat,cx,cy,rx,ry,soft){const d=Math.max(Math.abs(lon-cx)/rx,Math.abs(lat-cy)/ry);return 1-sstep(1-soft,1,d);} // 高原/盆地(平頂)
 function chinaElev(lon,lat){
-  let h=2.5;
-  h+=_g(lon,lat,87,33,15,8)*64;     // 青藏高原（大穹頂）
-  h+=_g(lon,lat,85,30,9,3)*26;      // 喜馬拉雅雪峰
-  h+=_g(lon,lat,82,42,8,3)*42;      // 天山
-  h+=_g(lon,lat,92,38,7,3)*30;      // 崑崙/祁連
-  h-=_g(lon,lat,83,40,5,2.5)*32;    // 塔里木盆地（沙漠低地）
-  h-=_g(lon,lat,89,44,4,2)*18;      // 準噶爾盆地
-  h+=_g(lon,lat,102,26,7,5)*24;     // 雲貴高原
-  h+=_g(lon,lat,109,37,8,4)*15;     // 黃土高原
-  h-=_g(lon,lat,105,30.5,3,2.5)*12; // 四川盆地（窪）
-  h*=1-0.55*sstep(112,120,lon);     // 東部平原壓低
+  let h=3;                                                    // 東部低地基準（三大平原）
+  // 第一階梯：青藏高原（廣闊高原）+ 喜馬拉雅雪鋒 + 崑崙
+  h+=_plat(lon,lat,89,33,12.5,5.5,.4)*40;
+  h+=_ridge(lon,lat,79,34.5,98,28.5,2.4)*_plat(lon,lat,89,33,15,7,.6)*26; // 喜馬拉雅南緣(雪峰)
+  h+=_ridge(lon,lat,90,36,101,37.5,2.2)*20;                   // 崑崙/祁連
+  // 西北：天山 + 塔里木/準噶爾盆地（沙漠窪地）
+  h+=_ridge(lon,lat,77,42.5,94,42,2.4)*34;                    // 天山
+  h-=_plat(lon,lat,83,39.5,6,2.6,.45)*30;                     // 塔里木盆地
+  h-=_plat(lon,lat,87,45,5,2,.45)*15;                         // 準噶爾盆地
+  // 第二階梯：高原
+  h+=_plat(lon,lat,103,26,5.5,4.5,.45)*22;                    // 雲貴高原
+  h+=_plat(lon,lat,107,37,4.5,3.5,.45)*16;                    // 黃土高原
+  h+=_plat(lon,lat,112,43,9,5,.55)*12;                        // 內蒙古高原
+  h-=_plat(lon,lat,105,30.5,3,2,.45)*14;                      // 四川盆地（窪）
+  // 主要山脈（線狀）
+  h+=_ridge(lon,lat,104,34,112,33.6,1.3)*22;                  // 秦嶺（南北分界）
+  h+=_ridge(lon,lat,99,29,102,24,1.6)*34;                     // 橫斷山脈（西南）
+  h+=_ridge(lon,lat,110,40,113.5,35.8,1.0)*18;                // 太行山
+  h+=_ridge(lon,lat,119,49,126,52,2.2)*15;                    // 大興安嶺
+  h+=_ridge(lon,lat,126,41,129,44,1.2)*17;                    // 長白山（東北）
+  h+=_ridge(lon,lat,110,25.5,117,24,1.4)*13;                  // 南嶺（華南）
   return Math.max(0.5,h);
 }
 function _chinaSurf(wx,wz){
