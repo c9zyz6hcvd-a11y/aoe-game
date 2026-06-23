@@ -299,6 +299,7 @@ function fbm(x,z){let a=0,amp=.5,f=1;for(let i=0;i<4;i++){
 function sstep(e0,e1,x){const t=Math.max(0,Math.min(1,(x-e0)/(e1-e0)));return t*t*(3-2*t);}
 const PLAIN={x0:0,x1:WORLD.w/S,z0:0,z1:WORLD.h/S}; // 遊玩平原 240 x 180
 const SEA_LEVEL=-1.3;
+const HEIGHT_SCALE=0.34; // 壓平山地（原本峰高~70太陡似牆/上唔到山）；只縮陸地高度，顏色照原值=雪頂照在
 // 經緯度 → 世界座標：整個中國填滿可玩世界(0..240×0..180)；中國中心對準世界中心
 const KX=3.75,KZ=4.64,LON0=104.5,LAT0=36.25;
 function ll2w(lon,lat){return [(lon-LON0)*KX+120,(LAT0-lat)*KZ+90];}
@@ -350,7 +351,7 @@ function _chinaSurf(wx,wz){
   return SEA_LEVEL-0.4-sstep(0,2.2,d)*8;            // 離岸越遠越深
 }
 function chinaH(wx,wz){return _chinaSurf(wx,wz);} // 整個世界 = 真實中國地貌（陸/海/山/河谷）
-function terrainY(x,y){return chinaH(x/S,y/S);}     // 邏輯座標(x,y) → 地形高度（視覺用，A* 不受影響）
+function terrainY(x,y){const h=chinaH(x/S,y/S);return h>0?h*HEIGHT_SCALE:h;} // 壓平陸地高度（海保持原樣）
 // ---- play area 內嘅河（可見 + 不可通行）；行北/南帶，唔切斷中間玩家↔敵人通道 ----
 const RIVER_HW=42; // 河半闊(logical px)
 const RIVER_PATHS=[
@@ -383,7 +384,7 @@ const TER={x0:-15,x1:255,z0:-15,z1:195}; // = 可玩世界(0..240×0..180)+海�
         cSea=new THREE.Color(0x2f6aa8), cDeep=new THREE.Color(0x14315c), tmp=new THREE.Color();
   for(let j=0;j<=segZ;j++)for(let i=0;i<=segX;i++){
     const wx=TER.x0+(TER.x1-TER.x0)*i/segX, wz=TER.z0+(TER.z1-TER.z0)*j/segZ;
-    const y=chinaH(wx,wz); pos.push(wx,y,wz);
+    const y=chinaH(wx,wz); pos.push(wx, y>0?y*HEIGHT_SCALE:y, wz); // 幾何壓平，下面顏色仍用原始 y（保留雪頂/岩/沙等生物群落）
     const lon=w2lon(wx),lat=w2lat(wz);
     const desert=_g(lon,lat,83,40,7,3)+_g(lon,lat,104,42,11,4); // 塔里木 + 戈壁/內蒙
     if(y<SEA_LEVEL){ tmp.copy(cSea).lerp(cDeep, sstep(SEA_LEVEL,SEA_LEVEL-7,y)); }
@@ -447,7 +448,7 @@ addRiverLL([[91,33],[97,32.2],[100.5,28],[104,28.8],[106.5,29.6],[108.8,30.3],[1
    const g=new THREE.Group();
    const tr=new THREE.Mesh(trunkG,trunkM);tr.position.y=.6;g.add(tr);
    const c1=new THREE.Mesh(coneA,leafM);c1.position.y=1.7;const c2=new THREE.Mesh(coneB,leafM);c2.position.y=2.7;g.add(c1);g.add(c2);
-   g.position.set(wx,y,wz);g.rotation.y=Math.random()*7;g.scale.setScalar(.7+Math.random()*.8);
+   g.position.set(wx, y*HEIGHT_SCALE, wz);g.rotation.y=Math.random()*7;g.scale.setScalar(.7+Math.random()*.8); // 跟壓平後地形,唔好浮空
    scene.add(g);placed++;}}
 // ---- 材質小工具 ----
 const M={};function mat(c){if(!M[c])M[c]=new THREE.MeshStandardMaterial({color:c,roughness:.85,metalness:0});return M[c];}
