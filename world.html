@@ -2868,7 +2868,7 @@ function syncScene(dt,now){
   for(const r of playRivers)r.mesh.position.y=Math.sin(now/620+r.phase)*0.18; // 水面微微起伏
   // 單位
   for(const u of units){
-    if(!u.mesh){u.mesh=makeUnitMesh(u);u.mesh.scale.setScalar(0.62);scene.add(u.mesh);} // 縮細人物對地圖比例
+    if(!u.mesh){u.mesh=makeUnitMesh(u);u.mesh.scale.setScalar(0.28);scene.add(u.mesh);} // 大陸比例：村民縮到好細,全圖幾乎睇唔到,放大先見到
     const m=u.mesh;
     m.position.set(u.x/S,terrainY(u.x,u.y),u.y/S);
     if(u.dir!==undefined){const cur=m.rotation.y;let d=u.dir-cur;
